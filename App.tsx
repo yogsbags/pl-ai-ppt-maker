@@ -43,18 +43,16 @@ const App: React.FC = () => {
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (step === GenerationStep.GENERATING_OUTLINE || step === GenerationStep.ANALYZING_FILE) return;
+    if (step !== GenerationStep.IDLE) return;
     
     let finalTopic = topic;
 
-    // If a file is uploaded but no topic is typed, analyze the file first
     if (filePart && !topic.trim()) {
       setStep(GenerationStep.ANALYZING_FILE);
       try {
         finalTopic = await analyzeFileTopic(filePart);
         setTopic(finalTopic);
       } catch (err) {
-        console.error("Topic extraction failed", err);
         finalTopic = "Insights from " + (fileName || "Document");
       }
     }
@@ -70,14 +68,18 @@ const App: React.FC = () => {
       
       if (mode !== 'INTELLIGENT') {
         setStep(GenerationStep.GENERATING_IMAGES);
-        for (let i = 0; i < outline.slides.length; i++) {
-          setPresentation(prev => {
-            if (!prev) return null;
-            const newSlides = [...prev.slides];
-            newSlides[i] = { ...newSlides[i], isGeneratingImage: true };
-            return { ...prev, slides: newSlides };
-          });
+        
+        // Initial state update to mark all slides as generating
+        setPresentation(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            slides: prev.slides.map(s => ({ ...s, isGeneratingImage: true }))
+          };
+        });
 
+        // Process sequentially to avoid memory spikes and API rate limits
+        for (let i = 0; i < outline.slides.length; i++) {
           try {
             const url = await generateSlideImage(outline.slides[i].imagePrompt, outline.theme);
             setPresentation(prev => {
@@ -87,17 +89,18 @@ const App: React.FC = () => {
               return { ...prev, slides: newSlides };
             });
           } catch (imgErr: any) {
-            if (imgErr.message === 'API_KEY_RESET_REQUIRED') {
-              setHasKey(false);
-              setStep(GenerationStep.ERROR);
-              return;
-            }
+            console.error("Image generation failed", i, imgErr);
             setPresentation(prev => {
               if (!prev) return null;
               const newSlides = [...prev.slides];
               newSlides[i] = { ...newSlides[i], isGeneratingImage: false };
               return { ...prev, slides: newSlides };
             });
+            if (imgErr.message === 'API_KEY_RESET_REQUIRED') {
+              setHasKey(false);
+              setStep(GenerationStep.ERROR);
+              return;
+            }
           }
         }
       }
@@ -157,13 +160,16 @@ const App: React.FC = () => {
 
   if (!hasKey) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-6 space-y-8">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-6 space-y-8 text-center">
         <div className="w-24 h-24 bg-indigo-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-indigo-500/20 rotate-12">
           <i className="fa-solid fa-wand-sparkles text-4xl text-white"></i>
         </div>
-        <div className="text-center space-y-2">
-          <h1 className="text-4xl font-black tracking-tighter">Connect your Studio</h1>
-          <p className="text-slate-500 font-medium">To use Nano Banana Pro, please select your API key.</p>
+        <div className="space-y-4">
+          <h1 className="text-4xl font-black">Connect your Studio</h1>
+          <p className="text-slate-400 max-w-sm mx-auto">
+            To generate high-quality visuals, you must select an API key from a paid GCP project.
+            Check the <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">billing documentation</a> for details.
+          </p>
         </div>
         <button onClick={() => window.aistudio.openSelectKey().then(() => setHasKey(true))} className="px-12 py-5 bg-white text-black rounded-3xl font-black text-lg hover:scale-105 transition-all shadow-xl">
           Open Key Manager
@@ -176,7 +182,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden flex flex-col">
       <header className="h-24 border-b border-white/5 flex items-center justify-between px-12 bg-slate-950/50 backdrop-blur-2xl z-50">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
             <i className="fa-solid fa-bolt-lightning text-white text-lg"></i>
           </div>
           <span className="text-2xl font-black tracking-tighter">Lumina.ai</span>
@@ -205,12 +211,12 @@ const App: React.FC = () => {
 
             <div className="grid grid-cols-3 gap-8 w-full mb-16">
               {[
-                { id: 'INTELLIGENT', title: 'Intelligent Text', desc: 'Bento grids & structural components. Best for data analysis.', icon: 'fa-table-columns' },
-                { id: 'INFOGRAPHIC', title: 'Infographic Pro', desc: 'Custom visuals with integrated text. Best for impact.', icon: 'fa-wand-magic-sparkles' },
-                { id: 'HYBRID', title: 'Hybrid Style', desc: 'Cinematic backdrops with overlays. Best for keynotes.', icon: 'fa-photo-film' }
+                { id: 'INTELLIGENT', title: 'Intelligent Text', desc: 'Bento grids & structures. Best for data.', icon: 'fa-table-columns' },
+                { id: 'INFOGRAPHIC', title: 'Infographic Pro', desc: 'Baked text & visuals. Best for impact.', icon: 'fa-wand-magic-sparkles' },
+                { id: 'HYBRID', title: 'Hybrid Style', desc: 'Cinematic backdrops. Best for keynotes.', icon: 'fa-photo-film' }
               ].map(m => (
-                <button key={m.id} onClick={() => setMode(m.id as any)} className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl shadow-indigo-500/20 translate-y-[-8px]' : 'bg-white/[0.03] border-white/5 hover:border-white/10'}`}>
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-8 transition-all duration-500 ${mode === m.id ? 'bg-white text-indigo-600 scale-110' : 'bg-white/5 text-slate-500'}`}>
+                <button key={m.id} onClick={() => setMode(m.id as any)} className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl' : 'bg-white/[0.03] border-white/5 hover:border-white/10'}`}>
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-8 transition-all ${mode === m.id ? 'bg-white text-indigo-600' : 'bg-white/5 text-slate-500'}`}>
                     <i className={`fa-solid ${m.icon} text-2xl`}></i>
                   </div>
                   <h3 className="text-2xl font-black mb-3">{m.title}</h3>
@@ -224,40 +230,27 @@ const App: React.FC = () => {
                 <input 
                   value={topic} 
                   onChange={e => setTopic(e.target.value)}
-                  placeholder={filePart ? "AI will extract topic from file..." : "Enter topic or upload document..."}
+                  placeholder={filePart ? "Extracting from file..." : "Topic or upload document..."}
                   className="w-full h-24 bg-white/10 border border-white/20 rounded-[40px] px-16 text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/40 transition-all placeholder:text-slate-700 pr-40"
                 />
-                <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-500 transition-colors">
+                <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500">
                   <i className="fa-solid fa-sparkles text-xl"></i>
                 </div>
                 
                 <div className="absolute right-4 top-4 bottom-4 flex space-x-3">
                   <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.xls,.xlsx,.csv" />
-                  <button 
-                    type="button" 
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`h-full aspect-square rounded-[30px] flex items-center justify-center transition-all ${filePart ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
-                    title="Upload PDF, XLS, or CSV"
-                  >
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className={`h-full aspect-square rounded-[30px] flex items-center justify-center transition-all ${filePart ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>
                     <i className={`fa-solid ${filePart ? 'fa-file-circle-check' : 'fa-file-arrow-up'} text-xl`}></i>
                   </button>
-                  <button 
-                    type="submit"
-                    disabled={(!topic.trim() && !filePart) || step !== GenerationStep.IDLE} 
-                    className="h-full px-10 bg-white text-black rounded-[30px] font-black uppercase tracking-widest text-sm hover:scale-95 active:scale-90 transition-all disabled:opacity-50"
-                  >
-                    {step === GenerationStep.ANALYZING_FILE ? 'Analyzing File...' : step === GenerationStep.GENERATING_OUTLINE ? 'Thinking...' : 'Start'}
+                  <button type="submit" disabled={(!topic.trim() && !filePart) || step !== GenerationStep.IDLE} className="h-full px-10 bg-white text-black rounded-[30px] font-black uppercase tracking-widest text-sm disabled:opacity-50">
+                    {step === GenerationStep.ANALYZING_FILE ? 'Analyzing...' : step === GenerationStep.GENERATING_OUTLINE ? 'Building...' : 'Start'}
                   </button>
                 </div>
               </div>
-              
               {fileName && (
-                <div className="flex items-center space-x-3 bg-indigo-500/10 px-6 py-3 rounded-2xl border border-indigo-500/20">
-                  <i className="fa-solid fa-file-invoice text-indigo-400"></i>
-                  <span className="text-sm font-bold text-indigo-200">{fileName}</span>
-                  <button type="button" onClick={() => { setFilePart(null); setFileName(null); }} className="text-slate-500 hover:text-white transition-colors">
-                    <i className="fa-solid fa-xmark"></i>
-                  </button>
+                <div className="flex items-center space-x-3 bg-indigo-500/10 px-6 py-3 rounded-2xl border border-indigo-500/20 text-indigo-200 text-sm font-bold">
+                  <i className="fa-solid fa-file-invoice"></i>
+                  <span>{fileName}</span>
                 </div>
               )}
             </form>
@@ -266,21 +259,20 @@ const App: React.FC = () => {
           <div className="flex h-full p-10 gap-10">
             <aside className="w-72 space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-shrink-0">
               {presentation.slides.map((s, i) => (
-                <button key={s.id} onClick={() => setActiveSlideIndex(i)} className={`w-full aspect-video rounded-3xl overflow-hidden border-4 transition-all duration-300 relative group ${activeSlideIndex === i ? 'border-indigo-500 ring-8 ring-indigo-500/10' : 'border-white/5 opacity-40 hover:opacity-100'}`}>
-                   {s.imageUrl ? <img src={s.imageUrl} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-slate-900 flex items-center justify-center"><i className={`fa-solid ${s.isGeneratingImage ? 'fa-spinner animate-spin text-indigo-500' : 'fa-list-check text-slate-700'} text-2xl`}></i></div>}
+                <button key={s.id} onClick={() => setActiveSlideIndex(i)} className={`w-full aspect-video rounded-3xl overflow-hidden border-4 transition-all duration-300 relative ${activeSlideIndex === i ? 'border-indigo-500 shadow-xl' : 'border-white/5 opacity-40 hover:opacity-100'}`}>
+                   {s.imageUrl ? <img src={s.imageUrl} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-slate-900 flex items-center justify-center"><i className={`fa-solid ${s.isGeneratingImage ? 'fa-spinner animate-spin text-indigo-500' : 'fa-list-check text-slate-700'} text-xl`}></i></div>}
                    <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 text-left">
-                     <p className="text-[10px] font-black uppercase tracking-tighter truncate text-slate-300">Slide {i+1}: {s.title}</p>
+                     <p className="text-[10px] font-black uppercase tracking-tighter truncate text-slate-300">Slide {i+1}</p>
                    </div>
                 </button>
               ))}
             </aside>
             <div className="flex-1 flex flex-col space-y-6">
-              <SlidePreview slide={presentation.slides[activeSlideIndex]} mode={presentation.mode} onUpdate={() => {}} />
+              <SlidePreview slide={presentation.slides[activeSlideIndex]} mode={presentation.mode} />
               <div className="flex bg-white/10 p-3 rounded-[32px] border border-white/20 backdrop-blur-3xl shadow-2xl">
-                 <input value={aiEditPrompt} onChange={e => setAiEditPrompt(e.target.value)} placeholder={presentation.mode === 'INFOGRAPHIC' ? "E.g., 'Change the title to X'..." : "Refine slide content..."} className="flex-1 bg-transparent px-6 font-bold text-white focus:outline-none placeholder:text-slate-500" onKeyDown={e => e.key === 'Enter' && handleApplyEdit()} />
-                 <button onClick={handleApplyEdit} disabled={isEditing || !aiEditPrompt.trim()} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-50 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20">
-                   {isEditing || presentation.slides[activeSlideIndex].isGeneratingImage ? <i className="fa-solid fa-spinner animate-spin mr-2"></i> : null}
-                   {presentation.mode === 'INFOGRAPHIC' ? 'Repaint Slide' : 'Refine Slide'}
+                 <input value={aiEditPrompt} onChange={e => setAiEditPrompt(e.target.value)} placeholder="Refine current slide..." className="flex-1 bg-transparent px-6 font-bold text-white focus:outline-none" onKeyDown={e => e.key === 'Enter' && handleApplyEdit()} />
+                 <button onClick={handleApplyEdit} disabled={isEditing || !aiEditPrompt.trim()} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all">
+                   {isEditing ? <i className="fa-solid fa-spinner animate-spin"></i> : (presentation.mode === 'INFOGRAPHIC' ? 'Repaint' : 'Refine')}
                  </button>
               </div>
             </div>
@@ -289,22 +281,18 @@ const App: React.FC = () => {
       </main>
 
       {step === GenerationStep.ERROR && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl flex items-center justify-center z-[100]">
-          <div className="bg-slate-900 p-10 rounded-[40px] border border-red-500/30 text-center space-y-6 shadow-2xl max-w-sm">
-            <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto">
-              <i className="fa-solid fa-triangle-exclamation text-red-500 text-3xl"></i>
-            </div>
-            <h2 className="text-3xl font-black">Oops!</h2>
-            <p className="text-slate-400">Something went wrong. Please check your key or document type.</p>
-            <button onClick={() => setStep(GenerationStep.IDLE)} className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-colors">Retry</button>
+        <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center z-[100]">
+          <div className="bg-slate-900 p-10 rounded-[40px] border border-red-500/30 text-center space-y-6 max-w-sm">
+            <h2 className="text-3xl font-black">Generation Failed</h2>
+            <button onClick={() => setStep(GenerationStep.IDLE)} className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest">Retry</button>
           </div>
         </div>
       )}
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 20px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
       `}</style>
     </div>
   );

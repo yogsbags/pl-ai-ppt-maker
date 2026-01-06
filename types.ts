@@ -48,9 +48,9 @@ declare global {
   interface Window {
     /**
      * aistudio is pre-configured and provided by the environment. 
-     * Using any to merge with the existing global declaration to avoid conflicts 
-     * with modifiers (like readonly) or type identity issues.
+     * Using the specific AIStudio interface and matching the readonly modifier 
+     * from the existing global declaration to ensure type compatibility.
      */
-    aistudio: any;
+    readonly aistudio: AIStudio;
   }
 }
