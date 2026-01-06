@@ -18,9 +18,6 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
   const isInfographic = mode === 'INFOGRAPHIC';
 
   const renderComponent = () => {
-    // In infographic mode, we rely heavily on the generated image which contains integrated text.
-    // We render the HTML components at very low opacity or hide them visually to avoid double-text,
-    // but keep them for semantic structure.
     const componentClass = isInfographic ? "opacity-0" : "flex-1 w-full";
 
     switch (slide.componentType) {
@@ -63,8 +60,7 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
                       <td key={j} className="px-6 py-4 text-sm font-medium text-slate-200">{cell}</td>
                     ))}
                   </tr>
-                ))}
-              </tbody>
+                </tbody>
             </table>
           </div>
         );
@@ -102,14 +98,19 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
       case 'icons':
         return (
           <div className={`${isInfographic ? 'opacity-0' : 'grid grid-cols-3 gap-6 mt-12 w-full'}`}>
-            {slide.content.map((point, idx) => (
-              <div key={idx} className="p-6 rounded-[32px] bg-white/[0.03] border border-white/10 flex flex-col items-center text-center hover:bg-white/[0.05] transition-all group">
-                <div style={{ color: primaryColor }} className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6 text-3xl group-hover:scale-110 transition-transform">
-                  <i className={`fa-solid ${slide.icon || 'fa-bolt-lightning'}`}></i>
+            {slide.content.map((point, idx) => {
+              // Priority: Array of icons, Single icon, Fallback bolt
+              const iconClass = (slide.icons && slide.icons[idx]) || slide.icon || 'fas fa-bolt-lightning';
+              return (
+                <div key={idx} className="p-6 rounded-[32px] bg-white/[0.03] border border-white/10 flex flex-col items-center text-center hover:bg-white/[0.05] transition-all group">
+                  <div style={{ color: primaryColor }} className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6 text-3xl group-hover:scale-110 transition-transform">
+                    {/* Render the full class string. If AI only provided the icon name, we wrap it. */}
+                    <i className={iconClass.includes('fa-') ? iconClass : `fas fa-${iconClass}`}></i>
+                  </div>
+                  <p className="text-sm font-bold text-slate-300 leading-snug">{point}</p>
                 </div>
-                <p className="text-sm font-bold text-slate-300 leading-snug">{point}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         );
 

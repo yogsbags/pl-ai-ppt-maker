@@ -125,7 +125,6 @@ const App: React.FC = () => {
     const currentSlide = presentation.slides[activeSlideIndex];
     try {
       if (presentation.mode === 'INFOGRAPHIC' && currentSlide.imageUrl) {
-        // Toggle specific slide generating state instead of global
         setPresentation(prev => {
           if (!prev) return null;
           const newSlides = [...prev.slides];
@@ -174,18 +173,22 @@ const App: React.FC = () => {
 
   if (!hasKey) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-6 space-y-8 text-center">
-        <div className="w-24 h-24 bg-indigo-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-indigo-500/20 rotate-12">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-6 space-y-8 text-center relative overflow-hidden">
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-20">
+          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/30 blur-[120px] rounded-full animate-pulse"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-500/20 blur-[120px] rounded-full animate-pulse [animation-delay:2s]"></div>
+        </div>
+        <div className="relative z-10 w-24 h-24 bg-indigo-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-indigo-500/20 rotate-12">
           <i className="fa-solid fa-wand-sparkles text-4xl text-white"></i>
         </div>
-        <div className="space-y-4">
+        <div className="relative z-10 space-y-4">
           <h1 className="text-4xl font-black text-white">Lumina.ai</h1>
           <p className="text-slate-400 max-w-sm mx-auto">Connect a paid Google Cloud Project API key to begin building branded visual stories.</p>
           <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-400 text-xs font-bold transition-colors">
             Learn about billing and project requirements
           </a>
         </div>
-        <button onClick={() => window.aistudio.openSelectKey().then(() => setHasKey(true))} className="px-12 py-5 bg-white text-black rounded-3xl font-black text-lg hover:scale-105 transition-all shadow-xl">
+        <button onClick={() => window.aistudio.openSelectKey().then(() => setHasKey(true))} className="relative z-10 px-12 py-5 bg-white text-black rounded-3xl font-black text-lg hover:scale-105 transition-all shadow-xl">
           Connect Studio
         </button>
       </div>
@@ -193,7 +196,21 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white font-sans overflow-hidden flex flex-col relative">
+      {/* Dynamic Background Animation */}
+      {(step === GenerationStep.IDLE || step === GenerationStep.ANALYZING_FILE || step === GenerationStep.EXTRACTING_BRAND) && (
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-50">
+          {/* Technical Grid Overlay */}
+          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+          <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
+          
+          {/* Floating Luminous Blobs */}
+          <div className="absolute top-[20%] left-[15%] w-96 h-96 bg-indigo-600/20 blur-[140px] rounded-full animate-blob-float"></div>
+          <div className="absolute bottom-[20%] right-[15%] w-[30rem] h-[30rem] bg-violet-600/10 blur-[140px] rounded-full animate-blob-float [animation-delay:4s]"></div>
+          <div className="absolute top-[40%] left-[50%] w-64 h-64 bg-indigo-400/10 blur-[100px] rounded-full animate-blob-float [animation-delay:2s]"></div>
+        </div>
+      )}
+
       <header className="h-24 border-b border-white/5 flex items-center justify-between px-12 bg-slate-950/50 backdrop-blur-2xl z-50">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
@@ -233,7 +250,7 @@ const App: React.FC = () => {
         )}
       </header>
 
-      <main className="flex-1 relative overflow-hidden flex">
+      <main className="flex-1 relative overflow-hidden flex z-10">
         {step === GenerationStep.IDLE || step === GenerationStep.GENERATING_OUTLINE || step === GenerationStep.ANALYZING_FILE || step === GenerationStep.EXTRACTING_BRAND ? (
           <div className="flex-1 overflow-y-auto custom-scrollbar pt-16 pb-20 px-8 flex flex-col items-center">
              {step === GenerationStep.EXTRACTING_BRAND && (
@@ -261,7 +278,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-3 gap-8 w-full max-w-6xl mb-16">
               {[
                 { id: 'INTELLIGENT', title: 'Intelligent', desc: 'Bento structures. Best for data.', icon: 'fa-table-columns' },
-                { id: 'INFOGRAPHIC', title: 'Infographic', desc: 'Embedded text in image. (Kimi Style)', icon: 'fa-wand-magic-sparkles' },
+                { id: 'INFOGRAPHIC', title: 'Infographic', desc: 'Embedded text in image. Cinematic style.', icon: 'fa-wand-magic-sparkles' },
                 { id: 'HYBRID', title: 'Hybrid', desc: 'Cinematic backdrops. Best for keynotes.', icon: 'fa-photo-film' }
               ].map(m => (
                 <button key={m.id} onClick={() => setMode(m.id as any)} className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl shadow-indigo-500/10' : 'bg-white/[0.03] border-white/5 hover:border-white/10'}`}>
@@ -454,6 +471,16 @@ const App: React.FC = () => {
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+        @keyframes blob-float {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+
+        .animate-blob-float {
+          animation: blob-float 15s infinite ease-in-out;
+        }
       `}</style>
     </div>
   );

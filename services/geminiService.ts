@@ -86,7 +86,8 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
       
       For 'chart', provide 'chartData' (label, value).
       For 'table', provide 'tableData' (headers, rows).
-      For 'icons', provide 'icon' (a FontAwesome solid icon name like 'fa-rocket').
+      For 'icons', provide 'icons' as an ARRAY of strings, one FontAwesome 6 solid class per content point (e.g., ["fas fa-rocket", "fas fa-lightbulb", "fas fa-shield-halved"]). 
+      Each icon MUST start with 'fas fa-'.
       
       Return a valid JSON structure with: title, subtitle, oneLiner, slides[].`;
 
@@ -114,7 +115,7 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
                   imagePrompt: { type: Type.STRING },
                   layout: { type: Type.STRING, enum: ['hero', 'split', 'focus', 'minimal', 'bento'] },
                   componentType: { type: Type.STRING, enum: ['grid', 'list', 'steps', 'stat', 'comparison', 'chart', 'table', 'timeline', 'icons'] },
-                  icon: { type: Type.STRING },
+                  icons: { type: Type.ARRAY, items: { type: Type.STRING } },
                   chartData: {
                     type: Type.ARRAY,
                     items: {
@@ -165,8 +166,7 @@ export const generateSlideImage = async (prompt: string, theme?: string, mode?: 
   
   let finalPrompt = "";
   if (mode === 'INFOGRAPHIC') {
-    // Kimi K2 style: Embedded text and integrated infographic design
-    finalPrompt = `Full Infographic Slide Design: "${slideTitle}". Key points to visualize: ${slideContent?.join(", ")}. Style: ${theme || 'Clean Modern'}. Cinematic high-end graphic design, integrated text and icons, 3D data visualization elements, premium typography, ultra-high resolution, Kimi K2 aesthetic.`;
+    finalPrompt = `Professional Data-Driven Infographic Design: "${slideTitle}". Key points to visualize: ${slideContent?.join(", ")}. Style: ${theme || 'Clean Modern'}. Cinematic high-end graphic design, integrated text, 3D charts, and vector icons, premium typography, ultra-high resolution. DO NOT include any text mentioning "Kimi", "K2", "Moonshot", or placeholder labels. The layout should look like a complete, finished infographic page.`;
   } else {
     finalPrompt = `Cinematic professional slide backdrop: ${prompt}. Style: ${theme || 'Clean Modern'}. Atmospheric, high-end, high-contrast, blurred depth of field. No text.`;
   }
@@ -198,7 +198,7 @@ export const editVisualSlide = async (currentImageUrl: string, userRequest: stri
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/png', data: base64Data } },
-          { text: `Modify this image: "${userRequest}".` },
+          { text: `Modify this image: "${userRequest}". Ensure no placeholder text is added.` },
         ],
       },
       config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
@@ -219,7 +219,7 @@ export const editSlideWithAI = async (slide: Slide, userRequest: string): Promis
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Update this slide JSON: ${JSON.stringify(slide)} based on: ${userRequest}. Maintain original structured data keys like tableData or chartData if applicable. Return ONLY valid JSON.`,
+      contents: `Update this slide JSON: ${JSON.stringify(slide)} based on: ${userRequest}. Maintain original structured data keys like tableData or chartData if applicable. For icons, ensure they are full FontAwesome classes like 'fas fa-check'. Return ONLY valid JSON.`,
       config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text || "{}");

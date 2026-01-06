@@ -38,7 +38,8 @@ export interface Slide {
   componentType: ComponentType;
   chartData?: ChartData[];
   tableData?: TableData;
-  icon?: string; // FontAwesome icon class
+  icon?: string; // Legacy support
+  icons?: string[]; // Array of FontAwesome icon classes for each content point
 }
 
 export interface Presentation {
@@ -77,7 +78,10 @@ declare global {
   }
 
   interface Window {
-    // Restore readonly modifier to match the host environment's declaration and fix the "identical modifiers" error.
-    readonly aistudio: AIStudio;
+    /**
+     * The aistudio object is injected into the global scope.
+     */
+    // Remove readonly modifier to ensure identity with environment-level declarations.
+    aistudio: AIStudio;
   }
 }
