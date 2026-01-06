@@ -5,7 +5,7 @@ import { Presentation } from "../types";
 export const exportToPptx = async (presentation: Presentation) => {
   const pres = new pptxgen();
   pres.layout = 'LAYOUT_16x9';
-  const primaryColor = presentation.branding?.primaryColor?.replace('#', '') || "6366F1";
+  const primaryColor = presentation.branding?.primaryColor?.replace('#', '') || "6366F1"; // Reverted to Indigo
   
   // 1. Title Slide
   const titleSlide = pres.addSlide();

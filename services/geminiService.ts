@@ -8,11 +8,28 @@ const getAIClient = () => {
 
 export const extractBrandInfo = async (url: string): Promise<Branding> => {
   const ai = getAIClient();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: `Find the official brand name, primary and secondary brand HEX colors, a concise slogan/one-liner, and a public URL for a high-quality logo for the website: ${url}. Return ONLY a JSON object with properties: name, primaryColor, secondaryColor, slogan, logoUrl.`,
+  
+  const searchResponse = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Perform a detailed search to find the official brand identity for the website: ${url}. 
+    I need: 
+    1. The official brand name.
+    2. Primary and secondary HEX brand colors.
+    3. The official slogan or mission statement.
+    4. A direct URL to their logo.`,
     config: {
-      tools: [{ googleSearch: {} }],
+      tools: [{ googleSearch: {} }]
+    }
+  });
+
+  const groundingSources = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
+  const structResponse = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Based on this information: "${searchResponse.text}", 
+    extract the brand details into a valid JSON object.
+    Required keys: name, primaryColor, secondaryColor, slogan, logoUrl.`,
+    config: {
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -28,43 +45,50 @@ export const extractBrandInfo = async (url: string): Promise<Branding> => {
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  const brandingData = JSON.parse(structResponse.text || "{}");
+  
+  return {
+    ...brandingData,
+    sources: groundingSources
+  };
 };
 
 export const analyzeFileTopic = async (filePart: FilePart): Promise<string> => {
   const ai = getAIClient();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: {
-      parts: [
-        filePart,
-        { text: "Analyze this document and provide a concise, catchy presentation topic (max 10 words) based on its core data and insights. Return ONLY the plain text string. DO NOT use any markdown formatting like **bolding**, italics, or quotes. The output must be clean text ready for a title field." }
-      ]
-    },
-  });
-  return response.text?.replace(/[\*#_>`"]/g, '').trim() || "Untitled Presentation";
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: {
+        parts: [
+          filePart,
+          { text: "Analyze this document and provide a concise, catchy presentation topic (max 10 words). Return ONLY the plain text string without markdown formatting." }
+        ]
+      },
+    });
+    return response.text?.replace(/[\*#_>`"]/g, '').trim() || "Untitled Presentation";
+  } catch (error: any) {
+    if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
+    throw error;
+  }
 };
 
 export const generatePresentationOutline = async (topic: string, mode: PresentationMode, filePart?: FilePart, branding?: Branding): Promise<Presentation> => {
   const ai = getAIClient();
   
-  let modeInstruction = "";
-  if (mode === 'INTELLIGENT') {
-    modeInstruction = `MODE: Intelligent Text Layout. Focus on data components.`;
-  } else if (mode === 'INFOGRAPHIC') {
-    modeInstruction = `MODE: Infographic Based. Integrate text into the visuals. Use theme: ${branding?.name || 'Modern Pro'}.`;
-  } else {
-    modeInstruction = `MODE: Hybrid. Cinematic backdrops.`;
-  }
-
   const userPrompt = `Topic: "${topic}"
-      ${modeInstruction}
+      Mode: ${mode}
       ${branding ? `Apply brand persona for ${branding.name} (${branding.slogan}).` : ""}
-      ${filePart ? "Analyze document for data points." : ""}
+      ${filePart ? "Analyze document for specific data points and insights." : ""}
       
-      Generate a professional 6-slide presentation outline.
-      Include a "oneLiner" for the brand/presentation summary.
-      Return JSON with: title, subtitle, oneLiner, slides array (title, content[], layout, componentType, imagePrompt).`;
+      Generate a professional 6-slide presentation. 
+      Vary the componentType for each slide to keep it engaging.
+      Use: 'grid', 'steps', 'stat', 'chart', 'table', 'timeline', 'icons', 'comparison'.
+      
+      For 'chart', provide 'chartData' (label, value).
+      For 'table', provide 'tableData' (headers, rows).
+      For 'icons', provide 'icon' (a FontAwesome solid icon name like 'fa-rocket').
+      
+      Return a valid JSON structure with: title, subtitle, oneLiner, slides[].`;
 
   try {
     const response = await ai.models.generateContent({
@@ -88,10 +112,28 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
                   title: { type: Type.STRING },
                   content: { type: Type.ARRAY, items: { type: Type.STRING } },
                   imagePrompt: { type: Type.STRING },
-                  layout: { type: Type.STRING, enum: ['hero', 'split', 'focus', 'minimal'] },
-                  componentType: { type: Type.STRING, enum: ['grid', 'steps', 'stat', 'comparison', 'list'] }
+                  layout: { type: Type.STRING, enum: ['hero', 'split', 'focus', 'minimal', 'bento'] },
+                  componentType: { type: Type.STRING, enum: ['grid', 'list', 'steps', 'stat', 'comparison', 'chart', 'table', 'timeline', 'icons'] },
+                  icon: { type: Type.STRING },
+                  chartData: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        label: { type: Type.STRING },
+                        value: { type: Type.NUMBER }
+                      }
+                    }
+                  },
+                  tableData: {
+                    type: Type.OBJECT,
+                    properties: {
+                      headers: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      rows: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.STRING } } }
+                    }
+                  }
                 },
-                required: ["title", "content", "layout"]
+                required: ["title", "content", "layout", "componentType"]
               }
             }
           },
@@ -119,8 +161,8 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
 };
 
 export const generateSlideImage = async (prompt: string, theme?: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const finalPrompt = `An out-of-this-world professional slide visual about: ${prompt}. Theme: ${theme || 'Clean Modern'}. Cinematic high-end design, 8k.`;
+  const ai = getAIClient();
+  const finalPrompt = `Cinematic professional slide backdrop: ${prompt}. Style: ${theme || 'Clean Modern'}. Atmospheric, high-end, high-contrast, blurred depth of field. No text.`;
   
   try {
     const response = await ai.models.generateContent({
@@ -140,7 +182,7 @@ export const generateSlideImage = async (prompt: string, theme?: string): Promis
 };
 
 export const editVisualSlide = async (currentImageUrl: string, userRequest: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIClient();
   const base64Data = currentImageUrl.split(',')[1];
   
   try {
@@ -149,7 +191,7 @@ export const editVisualSlide = async (currentImageUrl: string, userRequest: stri
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/png', data: base64Data } },
-          { text: `Modify this: "${userRequest}".` },
+          { text: `Modify this image: "${userRequest}".` },
         ],
       },
       config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
@@ -160,16 +202,22 @@ export const editVisualSlide = async (currentImageUrl: string, userRequest: stri
     }
     throw new Error("Failed");
   } catch (error: any) {
+    if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
     throw error;
   }
 };
 
 export const editSlideWithAI = async (slide: Slide, userRequest: string): Promise<Partial<Slide>> => {
   const ai = getAIClient();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Update slide ${JSON.stringify(slide)} based on: ${userRequest}. Return JSON.`,
-    config: { responseMimeType: "application/json" }
-  });
-  return JSON.parse(response.text || "{}");
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Update this slide JSON: ${JSON.stringify(slide)} based on: ${userRequest}. Maintain original structured data keys like tableData or chartData if applicable. Return ONLY valid JSON.`,
+      config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(response.text || "{}");
+  } catch (error: any) {
+    if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
+    throw error;
+  }
 };

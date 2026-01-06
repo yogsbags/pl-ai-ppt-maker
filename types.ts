@@ -1,7 +1,7 @@
 
-export type SlideLayout = 'hero' | 'split' | 'focus' | 'minimal';
+export type SlideLayout = 'hero' | 'split' | 'focus' | 'minimal' | 'bento';
 export type PresentationMode = 'INTELLIGENT' | 'INFOGRAPHIC' | 'HYBRID';
-export type ComponentType = 'grid' | 'list' | 'steps' | 'stat' | 'comparison';
+export type ComponentType = 'grid' | 'list' | 'steps' | 'stat' | 'comparison' | 'chart' | 'table' | 'timeline' | 'icons';
 
 export interface Branding {
   name: string;
@@ -9,6 +9,22 @@ export interface Branding {
   primaryColor: string;
   secondaryColor: string;
   slogan?: string;
+  sources?: {
+    web?: {
+      uri: string;
+      title: string;
+    };
+  }[];
+}
+
+export interface ChartData {
+  label: string;
+  value: number;
+}
+
+export interface TableData {
+  headers: string[];
+  rows: string[][];
 }
 
 export interface Slide {
@@ -19,7 +35,10 @@ export interface Slide {
   imageUrl?: string;
   isGeneratingImage?: boolean;
   layout: SlideLayout;
-  componentType?: ComponentType; // For Intelligent Layout
+  componentType: ComponentType;
+  chartData?: ChartData[];
+  tableData?: TableData;
+  icon?: string; // FontAwesome icon class
 }
 
 export interface Presentation {
@@ -30,7 +49,7 @@ export interface Presentation {
   date?: string;
   slides: Slide[];
   mode: PresentationMode;
-  theme?: string; // Common theme for Infographic mode
+  theme?: string;
   branding?: Branding;
 }
 
@@ -51,19 +70,14 @@ export interface FilePart {
   };
 }
 
-// Define AIStudio interface to match environmental expectations
-export interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
 declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
   interface Window {
-    /**
-     * aistudio is pre-configured and provided by the environment. 
-     * Using the specific AIStudio type name to avoid modifier or type clashing 
-     * with existing global definitions.
-     */
+    // Fix: Removed readonly to match other potential declarations and satisfy TS requirements for identical modifiers
     aistudio: AIStudio;
   }
 }
