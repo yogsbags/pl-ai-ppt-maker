@@ -1,4 +1,8 @@
 
+export type SlideLayout = 'hero' | 'split' | 'focus' | 'minimal';
+export type PresentationMode = 'INTELLIGENT' | 'INFOGRAPHIC' | 'HYBRID';
+export type ComponentType = 'grid' | 'list' | 'steps' | 'stat' | 'comparison';
+
 export interface Slide {
   id: string;
   title: string;
@@ -6,6 +10,8 @@ export interface Slide {
   imagePrompt: string;
   imageUrl?: string;
   isGeneratingImage?: boolean;
+  layout: SlideLayout;
+  componentType?: ComponentType; // For Intelligent Layout
 }
 
 export interface Presentation {
@@ -13,6 +19,8 @@ export interface Presentation {
   title: string;
   subtitle: string;
   slides: Slide[];
+  mode: PresentationMode;
+  theme?: string; // Common theme for Infographic mode
 }
 
 export enum GenerationStep {
@@ -23,9 +31,7 @@ export enum GenerationStep {
   ERROR = 'ERROR'
 }
 
-/**
- * Interface representing the AI Studio API for key management.
- */
+// Fix: Defining AIStudio interface to match the global type expected by the environment and resolve conflict.
 export interface AIStudio {
   hasSelectedApiKey: () => Promise<boolean>;
   openSelectKey: () => Promise<void>;
@@ -33,7 +39,7 @@ export interface AIStudio {
 
 declare global {
   interface Window {
-    // Modifier 'readonly' and explicit type 'AIStudio' are required to match the platform's global declaration.
-    readonly aistudio: AIStudio;
+    // Fix: Using the AIStudio type and ensuring modifiers match the existing global declaration (identical modifiers).
+    aistudio: AIStudio;
   }
 }

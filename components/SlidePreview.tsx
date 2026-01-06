@@ -1,101 +1,120 @@
 
 import React from 'react';
-import { Slide } from '../types';
+import { Slide, PresentationMode } from '../types';
 
 interface SlidePreviewProps {
   slide: Slide;
-  isActive: boolean;
+  mode: PresentationMode;
   onUpdate: (updated: Partial<Slide>) => void;
-  onRegenerateImage: () => void;
 }
 
-export const SlidePreview: React.FC<SlidePreviewProps> = ({ slide, isActive, onUpdate, onRegenerateImage }) => {
-  if (!isActive) return null;
+export const SlidePreview: React.FC<SlidePreviewProps> = ({ slide, mode, onUpdate }) => {
+  
+  const renderIntelligentContent = () => {
+    switch (slide.componentType) {
+      case 'grid':
+        return (
+          <div className="grid grid-cols-2 gap-6 mt-8">
+            {slide.content.map((point, idx) => (
+              <div key={idx} className="p-6 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all group/card">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4 font-bold">{idx + 1}</div>
+                <p className="text-lg text-slate-200 leading-relaxed">{point}</p>
+              </div>
+            ))}
+          </div>
+        );
+      case 'steps':
+        return (
+          <div className="flex flex-col space-y-4 mt-8">
+            {slide.content.map((point, idx) => (
+              <div key={idx} className="flex items-center space-x-6">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-indigo-500 flex items-center justify-center text-xl font-black text-indigo-500">{idx + 1}</div>
+                <div className="flex-1 p-4 bg-indigo-500/5 rounded-2xl border border-indigo-500/10">
+                  <p className="text-xl text-slate-100">{point}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      case 'stat':
+        return (
+          <div className="flex flex-col items-center justify-center mt-12 text-center">
+            <div className="text-7xl font-black text-indigo-500 mb-4">{slide.content[0]?.split(' ')[0] || '0%'}</div>
+            <p className="text-3xl text-slate-300 max-w-xl">{slide.content[0]?.split(' ').slice(1).join(' ') || slide.content[0]}</p>
+            <div className="mt-8 grid grid-cols-2 gap-8 w-full">
+               {slide.content.slice(1).map((c, i) => (
+                 <div key={i} className="text-left border-l-2 border-indigo-500 pl-4">
+                   <p className="text-sm text-slate-500 uppercase font-bold tracking-widest">Detail {i+1}</p>
+                   <p className="text-lg text-slate-200">{c}</p>
+                 </div>
+               ))}
+            </div>
+          </div>
+        );
+      default:
+        return (
+          <ul className="space-y-6 mt-8">
+            {slide.content.map((point, idx) => (
+              <li key={idx} className="flex items-start text-xl text-slate-200 group/item">
+                <span className="text-indigo-500 mr-4 font-black">/</span>
+                <span className="flex-1">{point}</span>
+              </li>
+            ))}
+          </ul>
+        );
+    }
+  };
+
+  if (mode === 'INFOGRAPHIC' && slide.imageUrl && !slide.isGeneratingImage) {
+    return (
+      <div className="relative w-full aspect-video rounded-[40px] overflow-hidden shadow-2xl border border-white/10 group">
+        <img src={slide.imageUrl} className="w-full h-full object-cover" alt="" />
+        <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-all"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-slate-900 border border-slate-800 flex flex-col group">
-      {/* Background Image Container */}
-      <div className="absolute inset-0 z-0">
-        {slide.isGeneratingImage ? (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800 space-y-4">
-            <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-slate-400 font-medium animate-pulse">Nano Banana Pro is painting...</p>
-          </div>
-        ) : slide.imageUrl ? (
-          <>
-            <img 
-              src={slide.imageUrl} 
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
-              alt={slide.title} 
-            />
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"></div>
-          </>
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-            <button 
-              onClick={onRegenerateImage}
-              className="px-6 py-3 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 border border-indigo-500/50 rounded-xl transition-all"
-            >
-              <i className="fa-solid fa-wand-magic-sparkles mr-2"></i>
-              Generate Cinematic Background
-            </button>
-          </div>
+    <div className={`relative w-full aspect-video rounded-[40px] overflow-hidden shadow-2xl border border-white/5 flex flex-col group transition-all duration-700 ${
+      mode === 'INTELLIGENT' ? 'bg-slate-950 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:20px_20px]' : 'bg-slate-900'
+    }`}>
+      {/* Background for HYBRID */}
+      {mode === 'HYBRID' && slide.imageUrl && (
+        <div className="absolute inset-0 z-0">
+          <img src={slide.imageUrl} className="w-full h-full object-cover" alt="" />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"></div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {slide.isGeneratingImage && (
+        <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-xl flex flex-col items-center justify-center space-y-4">
+          <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-indigo-400 font-black tracking-widest uppercase text-xs">Nano Banana Pro is Designing...</p>
+        </div>
+      )}
+
+      {/* Content Layer */}
+      <div className={`relative z-10 p-16 flex flex-col h-full ${slide.layout === 'hero' ? 'justify-center items-center text-center' : ''}`}>
+        <h2 className={`font-black tracking-tighter text-white mb-4 ${slide.layout === 'hero' ? 'text-7xl' : 'text-5xl'}`}>
+          {slide.title}
+        </h2>
+        
+        {mode === 'INTELLIGENT' ? renderIntelligentContent() : (
+          <ul className="space-y-4 mt-4">
+            {slide.content.map((p, i) => (
+              <li key={i} className="text-xl text-slate-300 flex items-start">
+                <span className="text-indigo-500 mr-3 mt-1.5 w-1.5 h-1.5 rounded-full bg-current"></span>
+                {p}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
-      {/* Content Layer */}
-      <div className="relative z-10 p-12 flex flex-col h-full">
-        <input
-          value={slide.title}
-          onChange={(e) => onUpdate({ title: e.target.value })}
-          className="bg-transparent text-4xl font-bold text-white mb-6 outline-none focus:ring-2 focus:ring-indigo-500/50 rounded-lg p-2 -ml-2 transition-all w-full"
-          placeholder="Slide Title"
-        />
-        
-        <div className="flex-1 overflow-y-auto space-y-4 pr-4 custom-scrollbar">
-          {slide.content.map((point, idx) => (
-            <div key={idx} className="flex items-start group/point">
-              <span className="text-indigo-400 mt-2 mr-3">•</span>
-              <textarea
-                value={point}
-                onChange={(e) => {
-                  const newContent = [...slide.content];
-                  newContent[idx] = e.target.value;
-                  onUpdate({ content: newContent });
-                }}
-                className="bg-transparent text-xl text-slate-200 w-full resize-none outline-none focus:bg-white/5 rounded p-2 transition-all"
-                rows={Math.max(1, Math.ceil(point.length / 50))}
-              />
-              <button 
-                onClick={() => {
-                  const newContent = slide.content.filter((_, i) => i !== idx);
-                  onUpdate({ content: newContent });
-                }}
-                className="opacity-0 group-hover/point:opacity-100 text-slate-500 hover:text-red-400 p-2 transition-opacity"
-              >
-                <i className="fa-solid fa-trash-can text-sm"></i>
-              </button>
-            </div>
-          ))}
-          <button 
-            onClick={() => onUpdate({ content: [...slide.content, "New point..."] })}
-            className="text-slate-500 hover:text-indigo-400 text-sm font-medium mt-4 flex items-center transition-colors"
-          >
-            <i className="fa-solid fa-plus mr-2"></i> Add Point
-          </button>
-        </div>
-      </div>
-
-      {/* Floating Controls */}
-      <div className="absolute top-4 right-4 z-20 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-         <button 
-          onClick={onRegenerateImage}
-          disabled={slide.isGeneratingImage}
-          className="p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white rounded-full transition-all border border-white/10"
-          title="Regenerate Image"
-        >
-          <i className="fa-solid fa-rotate"></i>
-        </button>
+      {/* Mode Indicator Tag */}
+      <div className="absolute top-8 right-8 z-20 px-4 py-1.5 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-500">
+        {mode} Engine
       </div>
     </div>
   );
