@@ -39,18 +39,16 @@ export interface FilePart {
   };
 }
 
-export interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
 declare global {
   interface Window {
     /**
      * aistudio is pre-configured and provided by the environment. 
-     * Using the specific AIStudio interface and matching the readonly modifier 
-     * from the existing global declaration to ensure type compatibility.
+     * Defined directly here to ensure compatibility with existing global definitions
+     * and to avoid modifier or type name clashing.
      */
-    readonly aistudio: AIStudio;
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
   }
 }

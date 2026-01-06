@@ -13,11 +13,12 @@ export const analyzeFileTopic = async (filePart: FilePart): Promise<string> => {
     contents: {
       parts: [
         filePart,
-        { text: "Analyze this document and provide a concise, catchy presentation topic (max 10 words) based on its core data and insights." }
+        { text: "Analyze this document and provide a concise, catchy presentation topic (max 10 words) based on its core data and insights. Return ONLY the plain text string. DO NOT use any markdown formatting like **bolding**, italics, or quotes. The output must be clean text ready for a title field." }
       ]
     },
   });
-  return response.text?.replace(/"/g, '').trim() || "Untitled Presentation";
+  // Clean up any stray markdown or quotes the model might still return
+  return response.text?.replace(/[\*#_>`"]/g, '').trim() || "Untitled Presentation";
 };
 
 export const generatePresentationOutline = async (topic: string, mode: PresentationMode, filePart?: FilePart): Promise<Presentation> => {
