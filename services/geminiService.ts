@@ -160,9 +160,16 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
   }
 };
 
-export const generateSlideImage = async (prompt: string, theme?: string): Promise<string> => {
+export const generateSlideImage = async (prompt: string, theme?: string, mode?: PresentationMode, slideTitle?: string, slideContent?: string[]): Promise<string> => {
   const ai = getAIClient();
-  const finalPrompt = `Cinematic professional slide backdrop: ${prompt}. Style: ${theme || 'Clean Modern'}. Atmospheric, high-end, high-contrast, blurred depth of field. No text.`;
+  
+  let finalPrompt = "";
+  if (mode === 'INFOGRAPHIC') {
+    // Kimi K2 style: Embedded text and integrated infographic design
+    finalPrompt = `Full Infographic Slide Design: "${slideTitle}". Key points to visualize: ${slideContent?.join(", ")}. Style: ${theme || 'Clean Modern'}. Cinematic high-end graphic design, integrated text and icons, 3D data visualization elements, premium typography, ultra-high resolution, Kimi K2 aesthetic.`;
+  } else {
+    finalPrompt = `Cinematic professional slide backdrop: ${prompt}. Style: ${theme || 'Clean Modern'}. Atmospheric, high-end, high-contrast, blurred depth of field. No text.`;
+  }
   
   try {
     const response = await ai.models.generateContent({

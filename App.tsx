@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Presentation, GenerationStep, PresentationMode, Slide, FilePart, Branding, ChartData, TableData } from './types';
 import { generatePresentationOutline, generateSlideImage, editSlideWithAI, editVisualSlide, analyzeFileTopic, extractBrandInfo } from './services/geminiService';
 import { exportToPptx } from './services/pptxService';
@@ -83,11 +83,18 @@ const App: React.FC = () => {
       
       if (mode !== 'INTELLIGENT') {
         setStep(GenerationStep.GENERATING_IMAGES);
-        setPresentation(prev => prev ? { ...prev, slides: prev.slides.map(s => ({ ...s, isGeneratingImage: true })) } : null);
+        
+        // Start all as generating
+        setPresentation(prev => prev ? {
+          ...prev,
+          slides: prev.slides.map(s => ({ ...s, isGeneratingImage: true }))
+        } : null);
 
+        // Process sequentially to avoid heavy browser flickering and resource contention
         for (let i = 0; i < outline.slides.length; i++) {
+          const slide = outline.slides[i];
           try {
-            const url = await generateSlideImage(outline.slides[i].imagePrompt, branding?.name);
+            const url = await generateSlideImage(slide.imagePrompt, branding?.name, mode, slide.title, slide.content);
             setPresentation(prev => {
               if (!prev) return null;
               const newSlides = [...prev.slides];
@@ -118,7 +125,14 @@ const App: React.FC = () => {
     const currentSlide = presentation.slides[activeSlideIndex];
     try {
       if (presentation.mode === 'INFOGRAPHIC' && currentSlide.imageUrl) {
-        setPresentation(prev => prev ? { ...prev, slides: prev.slides.map((s, idx) => idx === activeSlideIndex ? { ...s, isGeneratingImage: true } : s) } : null);
+        // Toggle specific slide generating state instead of global
+        setPresentation(prev => {
+          if (!prev) return null;
+          const newSlides = [...prev.slides];
+          newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], isGeneratingImage: true };
+          return { ...prev, slides: newSlides };
+        });
+
         const newUrl = await editVisualSlide(currentSlide.imageUrl, aiEditPrompt);
         setPresentation(prev => {
           if (!prev) return null;
@@ -138,21 +152,25 @@ const App: React.FC = () => {
       setAiEditPrompt('');
     } catch (err: any) {
       if (err.message === 'API_KEY_RESET_REQUIRED') setHasKey(false);
-      setPresentation(prev => prev ? { ...prev, slides: prev.slides.map((s, idx) => idx === activeSlideIndex ? { ...s, isGeneratingImage: false } : s) } : null);
+      setPresentation(prev => {
+        if (!prev) return null;
+        const newSlides = [...prev.slides];
+        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], isGeneratingImage: false };
+        return { ...prev, slides: newSlides };
+      });
     } finally {
       setIsEditing(false);
     }
   };
 
-  const updateSlideManually = (updates: Partial<Slide>) => {
-    if (!presentation) return;
+  const updateSlideManually = useCallback((updates: Partial<Slide>) => {
     setPresentation(prev => {
       if (!prev) return null;
       const newSlides = [...prev.slides];
       newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], ...updates };
       return { ...prev, slides: newSlides };
     });
-  };
+  }, [activeSlideIndex]);
 
   if (!hasKey) {
     return (
@@ -188,7 +206,6 @@ const App: React.FC = () => {
              {branding.logoUrl && <img src={branding.logoUrl} className="h-6 w-auto object-contain" alt="" />}
              <div className="flex flex-col min-w-0">
                <span className="text-xs font-black uppercase tracking-widest text-slate-400 leading-none">{branding.name}</span>
-               {/* Fixed: Displaying extracted grounding sources as required by Gemini API guidelines */}
                {branding.sources && branding.sources.length > 0 && (
                  <div className="flex gap-1.5 mt-1">
                    {branding.sources.map((s, idx) => s.web && (
@@ -244,7 +261,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-3 gap-8 w-full max-w-6xl mb-16">
               {[
                 { id: 'INTELLIGENT', title: 'Intelligent', desc: 'Bento structures. Best for data.', icon: 'fa-table-columns' },
-                { id: 'INFOGRAPHIC', title: 'Infographic', desc: 'Baked text & visuals. Best for impact.', icon: 'fa-wand-magic-sparkles' },
+                { id: 'INFOGRAPHIC', title: 'Infographic', desc: 'Embedded text in image. (Kimi Style)', icon: 'fa-wand-magic-sparkles' },
                 { id: 'HYBRID', title: 'Hybrid', desc: 'Cinematic backdrops. Best for keynotes.', icon: 'fa-photo-film' }
               ].map(m => (
                 <button key={m.id} onClick={() => setMode(m.id as any)} className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl shadow-indigo-500/10' : 'bg-white/[0.03] border-white/5 hover:border-white/10'}`}>
