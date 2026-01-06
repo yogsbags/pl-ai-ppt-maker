@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Presentation, GenerationStep, PresentationMode, Slide } from './types';
-import { generatePresentationOutline, generateSlideImage, editSlideWithAI } from './services/geminiService';
+import { generatePresentationOutline, generateSlideImage, editSlideWithAI, editVisualSlide } from './services/geminiService';
 import { exportToPptx } from './services/pptxService';
 import { SlidePreview } from './components/SlidePreview';
 
@@ -33,7 +33,6 @@ const App: React.FC = () => {
       if (mode !== 'INTELLIGENT') {
         setStep(GenerationStep.GENERATING_IMAGES);
         
-        // Use a loop that updates state correctly without causing heavy re-renders
         for (let i = 0; i < outline.slides.length; i++) {
           setPresentation(prev => {
             if (!prev) return null;
@@ -76,23 +75,56 @@ const App: React.FC = () => {
   const handleApplyEdit = async () => {
     if (!presentation || !aiEditPrompt.trim() || isEditing) return;
     setIsEditing(true);
+    
     const currentSlide = presentation.slides[activeSlideIndex];
+    
     try {
-      const updates = await editSlideWithAI(currentSlide, aiEditPrompt);
-      setPresentation(prev => {
-        if (!prev) return null;
-        const newSlides = [...prev.slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], ...updates };
-        return { ...prev, slides: newSlides };
-      });
+      // 1. Logic for INFOGRAPHIC mode: Edit the actual image
+      if (presentation.mode === 'INFOGRAPHIC' && currentSlide.imageUrl) {
+        setPresentation(prev => {
+          if (!prev) return null;
+          const newSlides = [...prev.slides];
+          newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], isGeneratingImage: true };
+          return { ...prev, slides: newSlides };
+        });
+
+        const newUrl = await editVisualSlide(currentSlide.imageUrl, aiEditPrompt);
+        
+        setPresentation(prev => {
+          if (!prev) return null;
+          const newSlides = [...prev.slides];
+          newSlides[activeSlideIndex] = { 
+            ...newSlides[activeSlideIndex], 
+            imageUrl: newUrl, 
+            isGeneratingImage: false 
+          };
+          return { ...prev, slides: newSlides };
+        });
+      } 
+      // 2. Logic for INTELLIGENT/HYBRID mode: Edit data structure
+      else {
+        const updates = await editSlideWithAI(currentSlide, aiEditPrompt);
+        setPresentation(prev => {
+          if (!prev) return null;
+          const newSlides = [...prev.slides];
+          newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], ...updates };
+          return { ...prev, slides: newSlides };
+        });
+      }
       setAiEditPrompt('');
     } catch (err: any) {
-      // Handle key reset if edit fails due to expired/invalid session key.
       if (err.message === 'API_KEY_RESET_REQUIRED') {
         setHasKey(false);
       } else {
         console.error("Edit failed:", err);
       }
+      // Reset generating state on error
+      setPresentation(prev => {
+        if (!prev) return null;
+        const newSlides = [...prev.slides];
+        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], isGeneratingImage: false };
+        return { ...prev, slides: newSlides };
+      });
     } finally {
       setIsEditing(false);
     }
@@ -186,7 +218,7 @@ const App: React.FC = () => {
                 value={topic} 
                 onChange={e => setTopic(e.target.value)}
                 placeholder="Topic: The Future of Quantum Computing..."
-                className="w-full h-24 bg-white/5 border border-white/10 rounded-[40px] px-12 text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/20 transition-all placeholder:text-slate-800"
+                className="w-full h-24 bg-white/10 border border-white/20 rounded-[40px] px-12 text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/40 transition-all placeholder:text-slate-700"
               />
               <button 
                 type="submit"
@@ -223,21 +255,21 @@ const App: React.FC = () => {
             </aside>
             <div className="flex-1 flex flex-col space-y-6">
               <SlidePreview slide={presentation.slides[activeSlideIndex]} mode={presentation.mode} onUpdate={() => {}} />
-              <div className="flex bg-white/5 p-3 rounded-[32px] border border-white/10 backdrop-blur-2xl shadow-2xl">
+              <div className="flex bg-white/10 p-3 rounded-[32px] border border-white/20 backdrop-blur-3xl shadow-2xl">
                  <input 
                   value={aiEditPrompt}
                   onChange={e => setAiEditPrompt(e.target.value)}
-                  placeholder="Tell AI how to adjust this slide..."
-                  className="flex-1 bg-transparent px-6 font-bold text-white focus:outline-none placeholder:text-slate-700"
+                  placeholder={presentation.mode === 'INFOGRAPHIC' ? "E.g., 'Change the title to X' or 'Update the chart data'..." : "Tell AI how to adjust this slide..."}
+                  className="flex-1 bg-transparent px-6 font-bold text-white focus:outline-none placeholder:text-slate-500"
                   onKeyDown={e => e.key === 'Enter' && handleApplyEdit()}
                  />
                  <button 
                   onClick={handleApplyEdit}
                   disabled={isEditing || !aiEditPrompt.trim()}
-                  className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/10"
+                  className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
                  >
-                   {isEditing ? <i className="fa-solid fa-spinner animate-spin mr-2"></i> : null}
-                   Refine Slide
+                   {isEditing || presentation.slides[activeSlideIndex].isGeneratingImage ? <i className="fa-solid fa-spinner animate-spin mr-2"></i> : null}
+                   {presentation.mode === 'INFOGRAPHIC' ? 'Repaint Slide' : 'Refine Slide'}
                  </button>
               </div>
             </div>

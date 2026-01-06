@@ -98,7 +98,6 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
 
 export const generateSlideImage = async (prompt: string, theme?: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  // For Infographic mode, we specify that the image IS the slide.
   const finalPrompt = theme 
     ? `An out-of-this-world professional infographic slide about: ${prompt}. Style: ${theme}. 
        Include integrated text placeholders, clean vector aesthetics, high-end design, 8k resolution, flat modern colors.` 
@@ -121,9 +120,52 @@ export const generateSlideImage = async (prompt: string, theme?: string): Promis
   }
 };
 
+/**
+ * Specifically for Infographic Mode: 
+ * Takes the current image and modifies it based on text instructions (Image-to-Image)
+ */
+export const editVisualSlide = async (currentImageUrl: string, userRequest: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Extract base64 data from the data URI
+  const base64Data = currentImageUrl.split(',')[1];
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'image/png',
+              data: base64Data,
+            },
+          },
+          {
+            text: `Modify this infographic based on this request: "${userRequest}". 
+            Keep the exact same visual style, layout, and colors. 
+            Update the text or data points inside the image as requested. 
+            Output a high-quality, professional, updated infographic.`,
+          },
+        ],
+      },
+      config: {
+        imageConfig: { aspectRatio: "16:9", imageSize: "1K" }
+      },
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    }
+    throw new Error("Failed to repaint image");
+  } catch (error: any) {
+    if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
+    throw error;
+  }
+};
+
 export const editSlideWithAI = async (slide: Slide, userRequest: string): Promise<Partial<Slide>> => {
   const ai = getAIClient();
-  // Added try-catch to detect and propagate API_KEY_RESET_REQUIRED errors.
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",

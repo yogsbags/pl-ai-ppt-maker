@@ -31,15 +31,15 @@ export enum GenerationStep {
   ERROR = 'ERROR'
 }
 
-// Fix: Rename interface to avoid name collision with global AIStudio type and use readonly modifier to match existing window declaration.
-export interface AIStudioClient {
+// Fix: Renamed interface to AIStudio to avoid type collision with existing global declarations and allow for proper interface merging.
+export interface AIStudio {
   hasSelectedApiKey: () => Promise<boolean>;
   openSelectKey: () => Promise<void>;
 }
 
 declare global {
   interface Window {
-    // Fix: Using a specific type name and ensuring modifiers match the environment's global declaration.
-    readonly aistudio: AIStudioClient;
+    // Fix: Updated type to AIStudio and removed readonly modifier to match the existing global declaration of aistudio.
+    aistudio: AIStudio;
   }
 }
