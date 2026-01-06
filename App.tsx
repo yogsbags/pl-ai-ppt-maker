@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Presentation, GenerationStep, PresentationMode, Slide } from './types';
-import { generatePresentationOutline, generateSlideImage, editSlideWithAI, editVisualSlide } from './services/geminiService';
+import { Presentation, GenerationStep, PresentationMode, Slide, FilePart } from './types';
+import { generatePresentationOutline, generateSlideImage, editSlideWithAI, editVisualSlide, analyzeFileTopic } from './services/geminiService';
 import { exportToPptx } from './services/pptxService';
 import { SlidePreview } from './components/SlidePreview';
 
@@ -14,25 +14,62 @@ const App: React.FC = () => {
   const [hasKey, setHasKey] = useState(false);
   const [aiEditPrompt, setAiEditPrompt] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [filePart, setFilePart] = useState<FilePart | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     window.aistudio.hasSelectedApiKey().then(setHasKey);
   }, []);
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      setFilePart({
+        inlineData: {
+          data: base64,
+          mimeType: file.type || 'application/octet-stream'
+        }
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic.trim() || step === GenerationStep.GENERATING_OUTLINE) return;
+    if (step === GenerationStep.GENERATING_OUTLINE || step === GenerationStep.ANALYZING_FILE) return;
     
+    let finalTopic = topic;
+
+    // If a file is uploaded but no topic is typed, analyze the file first
+    if (filePart && !topic.trim()) {
+      setStep(GenerationStep.ANALYZING_FILE);
+      try {
+        finalTopic = await analyzeFileTopic(filePart);
+        setTopic(finalTopic);
+      } catch (err) {
+        console.error("Topic extraction failed", err);
+        finalTopic = "Insights from " + (fileName || "Document");
+      }
+    }
+
+    if (!finalTopic.trim()) return;
+
     setStep(GenerationStep.GENERATING_OUTLINE);
     setActiveSlideIndex(0);
     
     try {
-      const outline = await generatePresentationOutline(topic, mode);
+      const outline = await generatePresentationOutline(finalTopic, mode, filePart || undefined);
       setPresentation(outline);
       
       if (mode !== 'INTELLIGENT') {
         setStep(GenerationStep.GENERATING_IMAGES);
-        
         for (let i = 0; i < outline.slides.length; i++) {
           setPresentation(prev => {
             if (!prev) return null;
@@ -50,7 +87,6 @@ const App: React.FC = () => {
               return { ...prev, slides: newSlides };
             });
           } catch (imgErr: any) {
-            console.error("Image gen failed for slide", i, imgErr);
             if (imgErr.message === 'API_KEY_RESET_REQUIRED') {
               setHasKey(false);
               setStep(GenerationStep.ERROR);
@@ -75,11 +111,9 @@ const App: React.FC = () => {
   const handleApplyEdit = async () => {
     if (!presentation || !aiEditPrompt.trim() || isEditing) return;
     setIsEditing(true);
-    
     const currentSlide = presentation.slides[activeSlideIndex];
     
     try {
-      // 1. Logic for INFOGRAPHIC mode: Edit the actual image
       if (presentation.mode === 'INFOGRAPHIC' && currentSlide.imageUrl) {
         setPresentation(prev => {
           if (!prev) return null;
@@ -87,9 +121,7 @@ const App: React.FC = () => {
           newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], isGeneratingImage: true };
           return { ...prev, slides: newSlides };
         });
-
         const newUrl = await editVisualSlide(currentSlide.imageUrl, aiEditPrompt);
-        
         setPresentation(prev => {
           if (!prev) return null;
           const newSlides = [...prev.slides];
@@ -100,9 +132,7 @@ const App: React.FC = () => {
           };
           return { ...prev, slides: newSlides };
         });
-      } 
-      // 2. Logic for INTELLIGENT/HYBRID mode: Edit data structure
-      else {
+      } else {
         const updates = await editSlideWithAI(currentSlide, aiEditPrompt);
         setPresentation(prev => {
           if (!prev) return null;
@@ -113,12 +143,7 @@ const App: React.FC = () => {
       }
       setAiEditPrompt('');
     } catch (err: any) {
-      if (err.message === 'API_KEY_RESET_REQUIRED') {
-        setHasKey(false);
-      } else {
-        console.error("Edit failed:", err);
-      }
-      // Reset generating state on error
+      if (err.message === 'API_KEY_RESET_REQUIRED') setHasKey(false);
       setPresentation(prev => {
         if (!prev) return null;
         const newSlides = [...prev.slides];
@@ -139,21 +164,8 @@ const App: React.FC = () => {
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-black tracking-tighter">Connect your Studio</h1>
           <p className="text-slate-500 font-medium">To use Nano Banana Pro, please select your API key.</p>
-          <div className="pt-2">
-            <a 
-              href="https://ai.google.dev/gemini-api/docs/billing" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-indigo-400 hover:text-indigo-300 text-sm font-bold transition-colors"
-            >
-              Billing Requirements & Docs <i className="fa-solid fa-arrow-up-right-from-square ml-1 text-[10px]"></i>
-            </a>
-          </div>
         </div>
-        <button 
-          onClick={() => window.aistudio.openSelectKey().then(() => setHasKey(true))} 
-          className="px-12 py-5 bg-white text-black rounded-3xl font-black text-lg hover:scale-105 transition-all shadow-xl"
-        >
+        <button onClick={() => window.aistudio.openSelectKey().then(() => setHasKey(true))} className="px-12 py-5 bg-white text-black rounded-3xl font-black text-lg hover:scale-105 transition-all shadow-xl">
           Open Key Manager
         </button>
       </div>
@@ -174,7 +186,7 @@ const App: React.FC = () => {
             <button onClick={() => exportToPptx(presentation)} className="px-8 py-3 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-indigo-50 shadow-lg">
               Download PPTX
             </button>
-            <button onClick={() => { setStep(GenerationStep.IDLE); setPresentation(null); }} className="p-3 bg-white/5 rounded-2xl border border-white/10 hover:bg-white/10 transition-all text-slate-400">
+            <button onClick={() => { setStep(GenerationStep.IDLE); setPresentation(null); setFilePart(null); setFileName(null); setTopic(''); }} className="p-3 bg-white/5 rounded-2xl border border-white/10 hover:bg-white/10 transition-all text-slate-400">
               <i className="fa-solid fa-house"></i>
             </button>
           </div>
@@ -182,28 +194,22 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 relative overflow-y-auto custom-scrollbar">
-        {step === GenerationStep.IDLE || step === GenerationStep.GENERATING_OUTLINE ? (
+        {step === GenerationStep.IDLE || step === GenerationStep.GENERATING_OUTLINE || step === GenerationStep.ANALYZING_FILE ? (
           <div className="max-w-6xl mx-auto pt-16 pb-20 px-8 flex flex-col items-center">
             <div className="text-center mb-16 space-y-4">
               <h1 className="text-8xl font-black tracking-tighter leading-[0.9] mb-4">
                 Deck building, <br/><span className="text-indigo-500">reinvented.</span>
               </h1>
-              <p className="text-slate-500 text-2xl font-medium max-w-2xl mx-auto">Instant professional presentations using Gemini 3 and specialized design engines.</p>
+              <p className="text-slate-500 text-2xl font-medium max-w-2xl mx-auto">Upload documents or describe your idea to generate pro decks instantly.</p>
             </div>
 
             <div className="grid grid-cols-3 gap-8 w-full mb-16">
               {[
-                { id: 'INTELLIGENT', title: 'Intelligent Text', desc: 'Default Engine. Uses professional bento grids & structural components. No AI images.', icon: 'fa-table-columns' },
-                { id: 'INFOGRAPHIC', title: 'Infographic Pro', desc: 'Nano Banana Pro bakes text and data into full-page visual masterpieces.', icon: 'fa-wand-magic-sparkles' },
-                { id: 'HYBRID', title: 'Hybrid Style', desc: 'Cinematic AI backdrops with modern text overlays. Perfect for high-impact keynotes.', icon: 'fa-photo-film' }
+                { id: 'INTELLIGENT', title: 'Intelligent Text', desc: 'Bento grids & structural components. Best for data analysis.', icon: 'fa-table-columns' },
+                { id: 'INFOGRAPHIC', title: 'Infographic Pro', desc: 'Custom visuals with integrated text. Best for impact.', icon: 'fa-wand-magic-sparkles' },
+                { id: 'HYBRID', title: 'Hybrid Style', desc: 'Cinematic backdrops with overlays. Best for keynotes.', icon: 'fa-photo-film' }
               ].map(m => (
-                <button 
-                  key={m.id}
-                  onClick={() => setMode(m.id as any)}
-                  className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${
-                    mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl shadow-indigo-500/20 translate-y-[-8px]' : 'bg-white/[0.03] border-white/5 hover:border-white/10'
-                  }`}
-                >
+                <button key={m.id} onClick={() => setMode(m.id as any)} className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl shadow-indigo-500/20 translate-y-[-8px]' : 'bg-white/[0.03] border-white/5 hover:border-white/10'}`}>
                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-8 transition-all duration-500 ${mode === m.id ? 'bg-white text-indigo-600 scale-110' : 'bg-white/5 text-slate-500'}`}>
                     <i className={`fa-solid ${m.icon} text-2xl`}></i>
                   </div>
@@ -213,40 +219,55 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            <form onSubmit={handleGenerate} className="w-full max-w-3xl relative">
-              <input 
-                value={topic} 
-                onChange={e => setTopic(e.target.value)}
-                placeholder="Topic: The Future of Quantum Computing..."
-                className="w-full h-24 bg-white/10 border border-white/20 rounded-[40px] px-12 text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/40 transition-all placeholder:text-slate-700"
-              />
-              <button 
-                type="submit"
-                disabled={!topic.trim() || step === GenerationStep.GENERATING_OUTLINE} 
-                className="absolute right-4 top-4 bottom-4 px-12 bg-white text-black rounded-[32px] font-black uppercase tracking-widest text-sm hover:scale-95 active:scale-90 transition-all disabled:opacity-50"
-              >
-                {step === GenerationStep.GENERATING_OUTLINE ? 'Thinking...' : 'Start'}
-              </button>
+            <form onSubmit={handleGenerate} className="w-full max-w-4xl flex flex-col items-center space-y-6">
+              <div className="w-full relative group">
+                <input 
+                  value={topic} 
+                  onChange={e => setTopic(e.target.value)}
+                  placeholder={filePart ? "AI will extract topic from file..." : "Enter topic or upload document..."}
+                  className="w-full h-24 bg-white/10 border border-white/20 rounded-[40px] px-16 text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/40 transition-all placeholder:text-slate-700 pr-40"
+                />
+                <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-500 transition-colors">
+                  <i className="fa-solid fa-sparkles text-xl"></i>
+                </div>
+                
+                <div className="absolute right-4 top-4 bottom-4 flex space-x-3">
+                  <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.xls,.xlsx,.csv" />
+                  <button 
+                    type="button" 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`h-full aspect-square rounded-[30px] flex items-center justify-center transition-all ${filePart ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
+                    title="Upload PDF, XLS, or CSV"
+                  >
+                    <i className={`fa-solid ${filePart ? 'fa-file-circle-check' : 'fa-file-arrow-up'} text-xl`}></i>
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={(!topic.trim() && !filePart) || step !== GenerationStep.IDLE} 
+                    className="h-full px-10 bg-white text-black rounded-[30px] font-black uppercase tracking-widest text-sm hover:scale-95 active:scale-90 transition-all disabled:opacity-50"
+                  >
+                    {step === GenerationStep.ANALYZING_FILE ? 'Analyzing File...' : step === GenerationStep.GENERATING_OUTLINE ? 'Thinking...' : 'Start'}
+                  </button>
+                </div>
+              </div>
+              
+              {fileName && (
+                <div className="flex items-center space-x-3 bg-indigo-500/10 px-6 py-3 rounded-2xl border border-indigo-500/20">
+                  <i className="fa-solid fa-file-invoice text-indigo-400"></i>
+                  <span className="text-sm font-bold text-indigo-200">{fileName}</span>
+                  <button type="button" onClick={() => { setFilePart(null); setFileName(null); }} className="text-slate-500 hover:text-white transition-colors">
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         ) : presentation ? (
           <div className="flex h-full p-10 gap-10">
             <aside className="w-72 space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-shrink-0">
               {presentation.slides.map((s, i) => (
-                <button 
-                  key={s.id}
-                  onClick={() => setActiveSlideIndex(i)}
-                  className={`w-full aspect-video rounded-3xl overflow-hidden border-4 transition-all duration-300 relative group ${
-                    activeSlideIndex === i ? 'border-indigo-500 ring-8 ring-indigo-500/10' : 'border-white/5 opacity-40 hover:opacity-100'
-                  }`}
-                >
-                   {s.imageUrl ? (
-                     <img src={s.imageUrl} className="w-full h-full object-cover" alt="" />
-                   ) : (
-                     <div className="w-full h-full bg-slate-900 flex items-center justify-center">
-                        <i className={`fa-solid ${s.isGeneratingImage ? 'fa-spinner animate-spin text-indigo-500' : 'fa-list-check text-slate-700'} text-2xl`}></i>
-                     </div>
-                   )}
+                <button key={s.id} onClick={() => setActiveSlideIndex(i)} className={`w-full aspect-video rounded-3xl overflow-hidden border-4 transition-all duration-300 relative group ${activeSlideIndex === i ? 'border-indigo-500 ring-8 ring-indigo-500/10' : 'border-white/5 opacity-40 hover:opacity-100'}`}>
+                   {s.imageUrl ? <img src={s.imageUrl} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-slate-900 flex items-center justify-center"><i className={`fa-solid ${s.isGeneratingImage ? 'fa-spinner animate-spin text-indigo-500' : 'fa-list-check text-slate-700'} text-2xl`}></i></div>}
                    <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 text-left">
                      <p className="text-[10px] font-black uppercase tracking-tighter truncate text-slate-300">Slide {i+1}: {s.title}</p>
                    </div>
@@ -256,18 +277,8 @@ const App: React.FC = () => {
             <div className="flex-1 flex flex-col space-y-6">
               <SlidePreview slide={presentation.slides[activeSlideIndex]} mode={presentation.mode} onUpdate={() => {}} />
               <div className="flex bg-white/10 p-3 rounded-[32px] border border-white/20 backdrop-blur-3xl shadow-2xl">
-                 <input 
-                  value={aiEditPrompt}
-                  onChange={e => setAiEditPrompt(e.target.value)}
-                  placeholder={presentation.mode === 'INFOGRAPHIC' ? "E.g., 'Change the title to X' or 'Update the chart data'..." : "Tell AI how to adjust this slide..."}
-                  className="flex-1 bg-transparent px-6 font-bold text-white focus:outline-none placeholder:text-slate-500"
-                  onKeyDown={e => e.key === 'Enter' && handleApplyEdit()}
-                 />
-                 <button 
-                  onClick={handleApplyEdit}
-                  disabled={isEditing || !aiEditPrompt.trim()}
-                  className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
-                 >
+                 <input value={aiEditPrompt} onChange={e => setAiEditPrompt(e.target.value)} placeholder={presentation.mode === 'INFOGRAPHIC' ? "E.g., 'Change the title to X'..." : "Refine slide content..."} className="flex-1 bg-transparent px-6 font-bold text-white focus:outline-none placeholder:text-slate-500" onKeyDown={e => e.key === 'Enter' && handleApplyEdit()} />
+                 <button onClick={handleApplyEdit} disabled={isEditing || !aiEditPrompt.trim()} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-50 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20">
                    {isEditing || presentation.slides[activeSlideIndex].isGeneratingImage ? <i className="fa-solid fa-spinner animate-spin mr-2"></i> : null}
                    {presentation.mode === 'INFOGRAPHIC' ? 'Repaint Slide' : 'Refine Slide'}
                  </button>
@@ -277,27 +288,23 @@ const App: React.FC = () => {
         ) : null}
       </main>
 
-      {/* Error Modal */}
       {step === GenerationStep.ERROR && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl flex items-center justify-center z-[100]">
           <div className="bg-slate-900 p-10 rounded-[40px] border border-red-500/30 text-center space-y-6 shadow-2xl max-w-sm">
             <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto">
               <i className="fa-solid fa-triangle-exclamation text-red-500 text-3xl"></i>
             </div>
-            <div className="space-y-2">
-              <h2 className="text-3xl font-black tracking-tighter">Oops!</h2>
-              <p className="text-slate-400 font-medium">Something went wrong with the AI generation. Please try again.</p>
-            </div>
-            <button onClick={() => setStep(GenerationStep.IDLE)} className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-colors">Return to Start</button>
+            <h2 className="text-3xl font-black">Oops!</h2>
+            <p className="text-slate-400">Something went wrong. Please check your key or document type.</p>
+            <button onClick={() => setStep(GenerationStep.IDLE)} className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-colors">Retry</button>
           </div>
         </div>
       )}
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 20px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
       `}</style>
     </div>
   );

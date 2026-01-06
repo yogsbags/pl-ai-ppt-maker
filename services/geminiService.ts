@@ -1,32 +1,41 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Slide, Presentation, PresentationMode, ComponentType } from "../types";
+import { Slide, Presentation, PresentationMode, ComponentType, FilePart } from "../types";
 
 const getAIClient = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
-export const generatePresentationOutline = async (topic: string, mode: PresentationMode): Promise<Presentation> => {
+export const analyzeFileTopic = async (filePart: FilePart): Promise<string> => {
+  const ai = getAIClient();
+  const response = await ai.models.generateContent({
+    model: "gemini-3-pro-preview",
+    contents: {
+      parts: [
+        filePart,
+        { text: "Analyze this document and provide a concise, catchy presentation topic (max 10 words) based on its core data and insights." }
+      ]
+    },
+  });
+  return response.text?.replace(/"/g, '').trim() || "Untitled Presentation";
+};
+
+export const generatePresentationOutline = async (topic: string, mode: PresentationMode, filePart?: FilePart): Promise<Presentation> => {
   const ai = getAIClient();
   
   let modeInstruction = "";
   if (mode === 'INTELLIGENT') {
     modeInstruction = `
       MODE: Intelligent Text Layout (NO IMAGES).
-      Focus: High-end structural design like Microsoft PowerPoint Designer or Canva.
-      For each slide, select a 'componentType' that best represents the data:
-      - 'grid': For 3-4 distinct features or points.
-      - 'steps': For processes or chronological info.
-      - 'stat': For data-heavy or single-focus impact points.
-      - 'comparison': For 'Before vs After' or 'Pros vs Cons'.
-      - 'list': Standard professional bullet points.
+      Focus: High-end structural design.
+      Use 'componentType': 'grid', 'steps', 'stat', 'comparison', 'list'.
     `;
   } else if (mode === 'INFOGRAPHIC') {
     modeInstruction = `
       MODE: Infographic Based.
-      Focus: A single, cohesive, out-of-this-world visual experience where TEXT IS PART OF THE IMAGE.
-      Choose a common artistic theme (e.g., 'Modern Glassmorphism', 'Cyberpunk Blueprints', 'Minimalist Bauhaus').
-      Each 'imagePrompt' must describe a full infographic slide where the title and content are integrated into the design.
+      Focus: TEXT IS PART OF THE IMAGE.
+      Choose a common artistic theme.
+      Each 'imagePrompt' must describe a full infographic slide where the title and content are integrated.
     `;
   } else {
     modeInstruction = `
@@ -35,23 +44,23 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
     `;
   }
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: `Topic: "${topic}"
+  const userPrompt = `Topic: "${topic}"
       ${modeInstruction}
+      ${filePart ? "Analyze the attached document to extract deep insights and data for these slides." : ""}
       
       Generate a professional 6-slide presentation outline.
       Return a JSON object with:
       - title: A punchy main title.
       - subtitle: A descriptive subtitle.
-      - theme: (string) A stylistic theme description for the whole deck.
-      - slides: Array of 6 objects with:
-        - title: Slide heading.
-        - content: Array of 3-5 key strings.
-        - layout: 'hero', 'split', 'focus', or 'minimal'.
-        - componentType: 'grid', 'steps', 'stat', 'comparison', or 'list' (Required for INTELLIGENT mode).
-        - imagePrompt: Detailed description for Nano Banana Pro (Required for INFOGRAPHIC and HYBRID).`,
+      - theme: Stylistic theme description.
+      - slides: Array of 6 objects with title, content (array), layout, componentType, and imagePrompt.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: {
+        parts: filePart ? [filePart, { text: userPrompt }] : [{ text: userPrompt }]
+      },
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -120,14 +129,8 @@ export const generateSlideImage = async (prompt: string, theme?: string): Promis
   }
 };
 
-/**
- * Specifically for Infographic Mode: 
- * Takes the current image and modifies it based on text instructions (Image-to-Image)
- */
 export const editVisualSlide = async (currentImageUrl: string, userRequest: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  // Extract base64 data from the data URI
   const base64Data = currentImageUrl.split(',')[1];
   
   try {
@@ -135,23 +138,11 @@ export const editVisualSlide = async (currentImageUrl: string, userRequest: stri
       model: 'gemini-3-pro-image-preview',
       contents: {
         parts: [
-          {
-            inlineData: {
-              mimeType: 'image/png',
-              data: base64Data,
-            },
-          },
-          {
-            text: `Modify this infographic based on this request: "${userRequest}". 
-            Keep the exact same visual style, layout, and colors. 
-            Update the text or data points inside the image as requested. 
-            Output a high-quality, professional, updated infographic.`,
-          },
+          { inlineData: { mimeType: 'image/png', data: base64Data } },
+          { text: `Modify this infographic: "${userRequest}". Keep style. Update text/data.` },
         ],
       },
-      config: {
-        imageConfig: { aspectRatio: "16:9", imageSize: "1K" }
-      },
+      config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -169,10 +160,7 @@ export const editSlideWithAI = async (slide: Slide, userRequest: string): Promis
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Current Slide JSON: ${JSON.stringify(slide)}. 
-      User Edit Request: "${userRequest}". 
-      Update the slide contents and structure to satisfy the request. 
-      Return a JSON object with updated title, content (array), layout, and componentType.`,
+      contents: `Current Slide: ${JSON.stringify(slide)}. Request: "${userRequest}". Return updated JSON with title, content, layout, componentType.`,
       config: { 
         responseMimeType: "application/json",
         responseSchema: {

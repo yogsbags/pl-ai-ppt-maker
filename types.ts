@@ -25,13 +25,20 @@ export interface Presentation {
 
 export enum GenerationStep {
   IDLE = 'IDLE',
+  ANALYZING_FILE = 'ANALYZING_FILE',
   GENERATING_OUTLINE = 'GENERATING_OUTLINE',
   GENERATING_IMAGES = 'GENERATING_IMAGES',
   COMPLETED = 'COMPLETED',
   ERROR = 'ERROR'
 }
 
-// Fix: Renamed interface to AIStudio to avoid type collision with existing global declarations and allow for proper interface merging.
+export interface FilePart {
+  inlineData: {
+    data: string;
+    mimeType: string;
+  };
+}
+
 export interface AIStudio {
   hasSelectedApiKey: () => Promise<boolean>;
   openSelectKey: () => Promise<void>;
@@ -39,7 +46,11 @@ export interface AIStudio {
 
 declare global {
   interface Window {
-    // Fix: Updated type to AIStudio and removed readonly modifier to match the existing global declaration of aistudio.
-    aistudio: AIStudio;
+    /**
+     * aistudio is pre-configured and provided by the environment. 
+     * Using any to merge with the existing global declaration to avoid conflicts 
+     * with modifiers (like readonly) or type identity issues.
+     */
+    aistudio: any;
   }
 }
