@@ -1,9 +1,34 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Slide, Presentation, PresentationMode, ComponentType, FilePart } from "../types";
+import { Slide, Presentation, PresentationMode, ComponentType, FilePart, Branding } from "../types";
 
 const getAIClient = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
+
+export const extractBrandInfo = async (url: string): Promise<Branding> => {
+  const ai = getAIClient();
+  const response = await ai.models.generateContent({
+    model: "gemini-3-pro-preview",
+    contents: `Find the official brand name, primary and secondary brand HEX colors, a concise slogan/one-liner, and a public URL for a high-quality logo for the website: ${url}. Return ONLY a JSON object with properties: name, primaryColor, secondaryColor, slogan, logoUrl.`,
+    config: {
+      tools: [{ googleSearch: {} }],
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          primaryColor: { type: Type.STRING },
+          secondaryColor: { type: Type.STRING },
+          slogan: { type: Type.STRING },
+          logoUrl: { type: Type.STRING }
+        },
+        required: ["name", "primaryColor", "secondaryColor"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text || "{}");
 };
 
 export const analyzeFileTopic = async (filePart: FilePart): Promise<string> => {
@@ -17,44 +42,29 @@ export const analyzeFileTopic = async (filePart: FilePart): Promise<string> => {
       ]
     },
   });
-  // Clean up any stray markdown or quotes the model might still return
   return response.text?.replace(/[\*#_>`"]/g, '').trim() || "Untitled Presentation";
 };
 
-export const generatePresentationOutline = async (topic: string, mode: PresentationMode, filePart?: FilePart): Promise<Presentation> => {
+export const generatePresentationOutline = async (topic: string, mode: PresentationMode, filePart?: FilePart, branding?: Branding): Promise<Presentation> => {
   const ai = getAIClient();
   
   let modeInstruction = "";
   if (mode === 'INTELLIGENT') {
-    modeInstruction = `
-      MODE: Intelligent Text Layout (NO IMAGES).
-      Focus: High-end structural design.
-      Use 'componentType': 'grid', 'steps', 'stat', 'comparison', 'list'.
-    `;
+    modeInstruction = `MODE: Intelligent Text Layout. Focus on data components.`;
   } else if (mode === 'INFOGRAPHIC') {
-    modeInstruction = `
-      MODE: Infographic Based.
-      Focus: TEXT IS PART OF THE IMAGE.
-      Choose a common artistic theme.
-      Each 'imagePrompt' must describe a full infographic slide where the title and content are integrated.
-    `;
+    modeInstruction = `MODE: Infographic Based. Integrate text into the visuals. Use theme: ${branding?.name || 'Modern Pro'}.`;
   } else {
-    modeInstruction = `
-      MODE: Hybrid (Text + Image).
-      Focus: Cinematic backdrop images with clean text overlays.
-    `;
+    modeInstruction = `MODE: Hybrid. Cinematic backdrops.`;
   }
 
   const userPrompt = `Topic: "${topic}"
       ${modeInstruction}
-      ${filePart ? "Analyze the attached document to extract deep insights and data for these slides." : ""}
+      ${branding ? `Apply brand persona for ${branding.name} (${branding.slogan}).` : ""}
+      ${filePart ? "Analyze document for data points." : ""}
       
       Generate a professional 6-slide presentation outline.
-      Return a JSON object with:
-      - title: A punchy main title.
-      - subtitle: A descriptive subtitle.
-      - theme: Stylistic theme description.
-      - slides: Array of 6 objects with title, content (array), layout, componentType, and imagePrompt.`;
+      Include a "oneLiner" for the brand/presentation summary.
+      Return JSON with: title, subtitle, oneLiner, slides array (title, content[], layout, componentType, imagePrompt).`;
 
   try {
     const response = await ai.models.generateContent({
@@ -69,7 +79,7 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
           properties: {
             title: { type: Type.STRING },
             subtitle: { type: Type.STRING },
-            theme: { type: Type.STRING },
+            oneLiner: { type: Type.STRING },
             slides: {
               type: Type.ARRAY,
               items: {
@@ -95,6 +105,8 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
       ...data,
       topic,
       mode,
+      branding,
+      date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       slides: (data.slides || []).map((s: any, i: number) => ({
         ...s,
         id: `slide-${Date.now()}-${i}`
@@ -108,10 +120,7 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
 
 export const generateSlideImage = async (prompt: string, theme?: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const finalPrompt = theme 
-    ? `An out-of-this-world professional infographic slide about: ${prompt}. Style: ${theme}. 
-       Include integrated text placeholders, clean vector aesthetics, high-end design, 8k resolution, flat modern colors.` 
-    : prompt;
+  const finalPrompt = `An out-of-this-world professional slide visual about: ${prompt}. Theme: ${theme || 'Clean Modern'}. Cinematic high-end design, 8k.`;
   
   try {
     const response = await ai.models.generateContent({
@@ -140,7 +149,7 @@ export const editVisualSlide = async (currentImageUrl: string, userRequest: stri
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/png', data: base64Data } },
-          { text: `Modify this infographic: "${userRequest}". Keep style. Update text/data.` },
+          { text: `Modify this: "${userRequest}".` },
         ],
       },
       config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
@@ -149,35 +158,18 @@ export const editVisualSlide = async (currentImageUrl: string, userRequest: stri
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Failed to repaint image");
+    throw new Error("Failed");
   } catch (error: any) {
-    if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
     throw error;
   }
 };
 
 export const editSlideWithAI = async (slide: Slide, userRequest: string): Promise<Partial<Slide>> => {
   const ai = getAIClient();
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Current Slide: ${JSON.stringify(slide)}. Request: "${userRequest}". Return updated JSON with title, content, layout, componentType.`,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            content: { type: Type.ARRAY, items: { type: Type.STRING } },
-            layout: { type: Type.STRING, enum: ['hero', 'split', 'focus', 'minimal'] },
-            componentType: { type: Type.STRING, enum: ['grid', 'steps', 'stat', 'comparison', 'list'] }
-          }
-        }
-      }
-    });
-    return JSON.parse(response.text || "{}");
-  } catch (error: any) {
-    if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
-    throw error;
-  }
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Update slide ${JSON.stringify(slide)} based on: ${userRequest}. Return JSON.`,
+    config: { responseMimeType: "application/json" }
+  });
+  return JSON.parse(response.text || "{}");
 };

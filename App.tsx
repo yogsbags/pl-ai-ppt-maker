@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Presentation, GenerationStep, PresentationMode, Slide, FilePart } from './types';
-import { generatePresentationOutline, generateSlideImage, editSlideWithAI, editVisualSlide, analyzeFileTopic } from './services/geminiService';
+import { Presentation, GenerationStep, PresentationMode, Slide, FilePart, Branding } from './types';
+import { generatePresentationOutline, generateSlideImage, editSlideWithAI, editVisualSlide, analyzeFileTopic, extractBrandInfo } from './services/geminiService';
 import { exportToPptx } from './services/pptxService';
 import { SlidePreview } from './components/SlidePreview';
 
@@ -16,6 +16,12 @@ const App: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [filePart, setFilePart] = useState<FilePart | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [showBrandPopup, setShowBrandPopup] = useState(false);
+  const [brandUrl, setBrandUrl] = useState('');
+  const [branding, setBranding] = useState<Branding | null>(() => {
+    const saved = localStorage.getItem('lumina_brand');
+    return saved ? JSON.parse(saved) : null;
+  });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,20 +29,29 @@ const App: React.FC = () => {
     window.aistudio.hasSelectedApiKey().then(setHasKey);
   }, []);
 
+  const handleExtractBrand = async () => {
+    if (!brandUrl.trim()) return;
+    setStep(GenerationStep.EXTRACTING_BRAND);
+    setShowBrandPopup(false);
+    try {
+      const info = await extractBrandInfo(brandUrl);
+      setBranding(info);
+      localStorage.setItem('lumina_brand', JSON.stringify(info));
+      setStep(GenerationStep.IDLE);
+    } catch (err) {
+      console.error(err);
+      setStep(GenerationStep.ERROR);
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setFileName(file.name);
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = (reader.result as string).split(',')[1];
-      setFilePart({
-        inlineData: {
-          data: base64,
-          mimeType: file.type || 'application/octet-stream'
-        }
-      });
+      setFilePart({ inlineData: { data: base64, mimeType: file.type || 'application/octet-stream' } });
     };
     reader.readAsDataURL(file);
   };
@@ -46,7 +61,6 @@ const App: React.FC = () => {
     if (step !== GenerationStep.IDLE) return;
     
     let finalTopic = topic;
-
     if (filePart && !topic.trim()) {
       setStep(GenerationStep.ANALYZING_FILE);
       try {
@@ -58,30 +72,20 @@ const App: React.FC = () => {
     }
 
     if (!finalTopic.trim()) return;
-
     setStep(GenerationStep.GENERATING_OUTLINE);
     setActiveSlideIndex(0);
     
     try {
-      const outline = await generatePresentationOutline(finalTopic, mode, filePart || undefined);
+      const outline = await generatePresentationOutline(finalTopic, mode, filePart || undefined, branding || undefined);
       setPresentation(outline);
       
       if (mode !== 'INTELLIGENT') {
         setStep(GenerationStep.GENERATING_IMAGES);
-        
-        // Initial state update to mark all slides as generating
-        setPresentation(prev => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            slides: prev.slides.map(s => ({ ...s, isGeneratingImage: true }))
-          };
-        });
+        setPresentation(prev => prev ? { ...prev, slides: prev.slides.map(s => ({ ...s, isGeneratingImage: true })) } : null);
 
-        // Process sequentially to avoid memory spikes and API rate limits
         for (let i = 0; i < outline.slides.length; i++) {
           try {
-            const url = await generateSlideImage(outline.slides[i].imagePrompt, outline.theme);
+            const url = await generateSlideImage(outline.slides[i].imagePrompt, branding?.name);
             setPresentation(prev => {
               if (!prev) return null;
               const newSlides = [...prev.slides];
@@ -89,18 +93,12 @@ const App: React.FC = () => {
               return { ...prev, slides: newSlides };
             });
           } catch (imgErr: any) {
-            console.error("Image generation failed", i, imgErr);
             setPresentation(prev => {
               if (!prev) return null;
               const newSlides = [...prev.slides];
               newSlides[i] = { ...newSlides[i], isGeneratingImage: false };
               return { ...prev, slides: newSlides };
             });
-            if (imgErr.message === 'API_KEY_RESET_REQUIRED') {
-              setHasKey(false);
-              setStep(GenerationStep.ERROR);
-              return;
-            }
           }
         }
       }
@@ -115,24 +113,14 @@ const App: React.FC = () => {
     if (!presentation || !aiEditPrompt.trim() || isEditing) return;
     setIsEditing(true);
     const currentSlide = presentation.slides[activeSlideIndex];
-    
     try {
       if (presentation.mode === 'INFOGRAPHIC' && currentSlide.imageUrl) {
-        setPresentation(prev => {
-          if (!prev) return null;
-          const newSlides = [...prev.slides];
-          newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], isGeneratingImage: true };
-          return { ...prev, slides: newSlides };
-        });
+        setPresentation(prev => prev ? { ...prev, slides: prev.slides.map((s, idx) => idx === activeSlideIndex ? { ...s, isGeneratingImage: true } : s) } : null);
         const newUrl = await editVisualSlide(currentSlide.imageUrl, aiEditPrompt);
         setPresentation(prev => {
           if (!prev) return null;
           const newSlides = [...prev.slides];
-          newSlides[activeSlideIndex] = { 
-            ...newSlides[activeSlideIndex], 
-            imageUrl: newUrl, 
-            isGeneratingImage: false 
-          };
+          newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], imageUrl: newUrl, isGeneratingImage: false };
           return { ...prev, slides: newSlides };
         });
       } else {
@@ -145,14 +133,8 @@ const App: React.FC = () => {
         });
       }
       setAiEditPrompt('');
-    } catch (err: any) {
-      if (err.message === 'API_KEY_RESET_REQUIRED') setHasKey(false);
-      setPresentation(prev => {
-        if (!prev) return null;
-        const newSlides = [...prev.slides];
-        newSlides[activeSlideIndex] = { ...newSlides[activeSlideIndex], isGeneratingImage: false };
-        return { ...prev, slides: newSlides };
-      });
+    } catch (err) {
+      setPresentation(prev => prev ? { ...prev, slides: prev.slides.map((s, idx) => idx === activeSlideIndex ? { ...s, isGeneratingImage: false } : s) } : null);
     } finally {
       setIsEditing(false);
     }
@@ -165,14 +147,11 @@ const App: React.FC = () => {
           <i className="fa-solid fa-wand-sparkles text-4xl text-white"></i>
         </div>
         <div className="space-y-4">
-          <h1 className="text-4xl font-black">Connect your Studio</h1>
-          <p className="text-slate-400 max-w-sm mx-auto">
-            To generate high-quality visuals, you must select an API key from a paid GCP project.
-            Check the <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">billing documentation</a> for details.
-          </p>
+          <h1 className="text-4xl font-black">Lumina.ai</h1>
+          <p className="text-slate-400 max-w-sm mx-auto">Please select an API key to begin.</p>
         </div>
         <button onClick={() => window.aistudio.openSelectKey().then(() => setHasKey(true))} className="px-12 py-5 bg-white text-black rounded-3xl font-black text-lg hover:scale-105 transition-all shadow-xl">
-          Open Key Manager
+          Connect Studio
         </button>
       </div>
     );
@@ -187,6 +166,15 @@ const App: React.FC = () => {
           </div>
           <span className="text-2xl font-black tracking-tighter">Lumina.ai</span>
         </div>
+        {branding && (
+           <div className="flex items-center bg-white/5 px-4 py-2 rounded-2xl border border-white/10 space-x-3">
+             {branding.logoUrl && <img src={branding.logoUrl} className="h-6 w-auto object-contain" alt="" />}
+             <span className="text-xs font-black uppercase tracking-widest text-slate-400">{branding.name}</span>
+             <button onClick={() => { setBranding(null); localStorage.removeItem('lumina_brand'); }} className="text-slate-600 hover:text-red-500 transition-colors">
+               <i className="fa-solid fa-xmark"></i>
+             </button>
+           </div>
+        )}
         {presentation && (
           <div className="flex items-center space-x-4">
             <button onClick={() => exportToPptx(presentation)} className="px-8 py-3 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-indigo-50 shadow-lg">
@@ -200,23 +188,23 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 relative overflow-y-auto custom-scrollbar">
-        {step === GenerationStep.IDLE || step === GenerationStep.GENERATING_OUTLINE || step === GenerationStep.ANALYZING_FILE ? (
+        {step === GenerationStep.IDLE || step === GenerationStep.GENERATING_OUTLINE || step === GenerationStep.ANALYZING_FILE || step === GenerationStep.EXTRACTING_BRAND ? (
           <div className="max-w-6xl mx-auto pt-16 pb-20 px-8 flex flex-col items-center">
             <div className="text-center mb-16 space-y-4">
               <h1 className="text-8xl font-black tracking-tighter leading-[0.9] mb-4">
-                Deck building, <br/><span className="text-indigo-500">reinvented.</span>
+                Build your <br/><span style={{ color: branding?.primaryColor || '#6366F1' }}>branded story.</span>
               </h1>
-              <p className="text-slate-500 text-2xl font-medium max-w-2xl mx-auto">Upload documents or describe your idea to generate pro decks instantly.</p>
+              <p className="text-slate-500 text-2xl font-medium max-w-2xl mx-auto">AI presentation engine with deep website branding integration.</p>
             </div>
 
             <div className="grid grid-cols-3 gap-8 w-full mb-16">
               {[
-                { id: 'INTELLIGENT', title: 'Intelligent Text', desc: 'Bento grids & structures. Best for data.', icon: 'fa-table-columns' },
-                { id: 'INFOGRAPHIC', title: 'Infographic Pro', desc: 'Baked text & visuals. Best for impact.', icon: 'fa-wand-magic-sparkles' },
-                { id: 'HYBRID', title: 'Hybrid Style', desc: 'Cinematic backdrops. Best for keynotes.', icon: 'fa-photo-film' }
+                { id: 'INTELLIGENT', title: 'Intelligent', desc: 'Bento structures. Best for data.', icon: 'fa-table-columns' },
+                { id: 'INFOGRAPHIC', title: 'Infographic', desc: 'Baked text & visuals. Best for impact.', icon: 'fa-wand-magic-sparkles' },
+                { id: 'HYBRID', title: 'Hybrid', desc: 'Cinematic backdrops. Best for keynotes.', icon: 'fa-photo-film' }
               ].map(m => (
-                <button key={m.id} onClick={() => setMode(m.id as any)} className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl' : 'bg-white/[0.03] border-white/5 hover:border-white/10'}`}>
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-8 transition-all ${mode === m.id ? 'bg-white text-indigo-600' : 'bg-white/5 text-slate-500'}`}>
+                <button key={m.id} onClick={() => setMode(m.id as any)} className={`relative p-8 rounded-[40px] text-left border-2 transition-all duration-500 group flex flex-col ${mode === m.id ? 'bg-indigo-600 border-indigo-400 shadow-2xl' : 'bg-white/[0.03] border-white/5 hover:border-white/10'}`} style={mode === m.id ? { backgroundColor: branding?.primaryColor } : {}}>
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-8 transition-all ${mode === m.id ? 'bg-white text-indigo-600' : 'bg-white/5 text-slate-500'}`} style={mode === m.id ? { color: branding?.primaryColor } : {}}>
                     <i className={`fa-solid ${m.icon} text-2xl`}></i>
                   </div>
                   <h3 className="text-2xl font-black mb-3">{m.title}</h3>
@@ -230,20 +218,25 @@ const App: React.FC = () => {
                 <input 
                   value={topic} 
                   onChange={e => setTopic(e.target.value)}
-                  placeholder={filePart ? "Extracting from file..." : "Topic or upload document..."}
-                  className="w-full h-24 bg-white/10 border border-white/20 rounded-[40px] px-16 text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/40 transition-all placeholder:text-slate-700 pr-40"
+                  placeholder={filePart ? "Extracting from file..." : "Enter topic or idea..."}
+                  className="w-full h-24 bg-white/10 border border-white/20 rounded-[40px] px-24 text-3xl font-black text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/40 transition-all placeholder:text-slate-700 pr-40"
                 />
-                <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500">
-                  <i className="fa-solid fa-sparkles text-xl"></i>
-                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setShowBrandPopup(true)}
+                  className="absolute left-6 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex items-center justify-center text-slate-500 hover:text-white transition-all"
+                  title="Extract Brand Guidelines"
+                >
+                  <i className="fa-solid fa-plus text-lg"></i>
+                </button>
                 
                 <div className="absolute right-4 top-4 bottom-4 flex space-x-3">
                   <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".pdf,.xls,.xlsx,.csv" />
                   <button type="button" onClick={() => fileInputRef.current?.click()} className={`h-full aspect-square rounded-[30px] flex items-center justify-center transition-all ${filePart ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>
                     <i className={`fa-solid ${filePart ? 'fa-file-circle-check' : 'fa-file-arrow-up'} text-xl`}></i>
                   </button>
-                  <button type="submit" disabled={(!topic.trim() && !filePart) || step !== GenerationStep.IDLE} className="h-full px-10 bg-white text-black rounded-[30px] font-black uppercase tracking-widest text-sm disabled:opacity-50">
-                    {step === GenerationStep.ANALYZING_FILE ? 'Analyzing...' : step === GenerationStep.GENERATING_OUTLINE ? 'Building...' : 'Start'}
+                  <button type="submit" disabled={(!topic.trim() && !filePart) || step !== GenerationStep.IDLE} className="h-full px-10 bg-white text-black rounded-[30px] font-black uppercase tracking-widest text-sm disabled:opacity-50" style={(!topic.trim() && !filePart) ? {} : {backgroundColor: branding?.primaryColor, color: 'white'}}>
+                    {step === GenerationStep.ANALYZING_FILE ? 'Analyzing...' : step === GenerationStep.EXTRACTING_BRAND ? 'Extracting Brand...' : step === GenerationStep.GENERATING_OUTLINE ? 'Building...' : 'Start'}
                   </button>
                 </div>
               </div>
@@ -259,8 +252,8 @@ const App: React.FC = () => {
           <div className="flex h-full p-10 gap-10">
             <aside className="w-72 space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-shrink-0">
               {presentation.slides.map((s, i) => (
-                <button key={s.id} onClick={() => setActiveSlideIndex(i)} className={`w-full aspect-video rounded-3xl overflow-hidden border-4 transition-all duration-300 relative ${activeSlideIndex === i ? 'border-indigo-500 shadow-xl' : 'border-white/5 opacity-40 hover:opacity-100'}`}>
-                   {s.imageUrl ? <img src={s.imageUrl} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-slate-900 flex items-center justify-center"><i className={`fa-solid ${s.isGeneratingImage ? 'fa-spinner animate-spin text-indigo-500' : 'fa-list-check text-slate-700'} text-xl`}></i></div>}
+                <button key={s.id} onClick={() => setActiveSlideIndex(i)} className={`w-full aspect-video rounded-3xl overflow-hidden border-4 transition-all duration-300 relative ${activeSlideIndex === i ? 'border-indigo-500 shadow-xl' : 'border-white/5 opacity-40 hover:opacity-100'}`} style={activeSlideIndex === i ? {borderColor: branding?.primaryColor} : {}}>
+                   {s.imageUrl ? <img src={s.imageUrl} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-slate-900 flex items-center justify-center"><i className={`fa-solid ${s.isGeneratingImage ? 'fa-spinner animate-spin text-indigo-500' : 'fa-list-check text-slate-700'} text-xl`} style={s.isGeneratingImage ? {color: branding?.primaryColor} : {}}></i></div>}
                    <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 text-left">
                      <p className="text-[10px] font-black uppercase tracking-tighter truncate text-slate-300">Slide {i+1}</p>
                    </div>
@@ -268,17 +261,44 @@ const App: React.FC = () => {
               ))}
             </aside>
             <div className="flex-1 flex flex-col space-y-6">
-              <SlidePreview slide={presentation.slides[activeSlideIndex]} mode={presentation.mode} />
+              <SlidePreview 
+                slide={presentation.slides[activeSlideIndex]} 
+                mode={presentation.mode} 
+                branding={branding || undefined} 
+                isFirst={activeSlideIndex === 0}
+                date={presentation.date}
+                oneLiner={presentation.oneLiner}
+              />
               <div className="flex bg-white/10 p-3 rounded-[32px] border border-white/20 backdrop-blur-3xl shadow-2xl">
                  <input value={aiEditPrompt} onChange={e => setAiEditPrompt(e.target.value)} placeholder="Refine current slide..." className="flex-1 bg-transparent px-6 font-bold text-white focus:outline-none" onKeyDown={e => e.key === 'Enter' && handleApplyEdit()} />
-                 <button onClick={handleApplyEdit} disabled={isEditing || !aiEditPrompt.trim()} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all">
-                   {isEditing ? <i className="fa-solid fa-spinner animate-spin"></i> : (presentation.mode === 'INFOGRAPHIC' ? 'Repaint' : 'Refine')}
+                 <button onClick={handleApplyEdit} disabled={isEditing || !aiEditPrompt.trim()} className="px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all" style={{ backgroundColor: branding?.primaryColor }}>
+                   {isEditing ? <i className="fa-solid fa-spinner animate-spin"></i> : 'Refine'}
                  </button>
               </div>
             </div>
           </div>
         ) : null}
       </main>
+
+      {showBrandPopup && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div className="bg-slate-900 w-full max-w-lg rounded-[40px] border border-white/10 p-10 space-y-8 shadow-2xl">
+            <div className="flex justify-between items-center">
+              <h2 className="text-3xl font-black tracking-tighter">Brand Extraction</h2>
+              <button onClick={() => setShowBrandPopup(false)} className="text-slate-500 hover:text-white transition-colors">
+                <i className="fa-solid fa-xmark text-2xl"></i>
+              </button>
+            </div>
+            <p className="text-slate-400 font-medium leading-relaxed">Insert your brand's website URL. We'll automatically fetch your logo, brand colors, and slogan to personalize your decks.</p>
+            <div className="space-y-4">
+              <input value={brandUrl} onChange={e => setBrandUrl(e.target.value)} placeholder="https://yourbrand.com" className="w-full h-16 bg-white/5 border border-white/10 rounded-2xl px-6 text-xl font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+              <button onClick={handleExtractBrand} disabled={!brandUrl.trim()} className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-sm tracking-widest hover:scale-95 transition-all">
+                Analyze Brand
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {step === GenerationStep.ERROR && (
         <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center z-[100]">
