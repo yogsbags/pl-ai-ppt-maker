@@ -1,11 +1,11 @@
 
 import pptxgen from "pptxgenjs";
-import { Presentation } from "../types";
+import { Presentation, Slide } from "../types";
 
 export const exportToPptx = async (presentation: Presentation) => {
   const pres = new pptxgen();
   pres.layout = 'LAYOUT_16x9';
-  const primaryColor = presentation.branding?.primaryColor?.replace('#', '') || "6366F1"; // Reverted to Indigo
+  const primaryColor = presentation.branding?.primaryColor?.replace('#', '') || "6366F1";
   
   // 1. Title Slide
   const titleSlide = pres.addSlide();
@@ -30,11 +30,6 @@ export const exportToPptx = async (presentation: Presentation) => {
     fontSize: 16, color: primaryColor, bold: true, align: "center", fontFace: "Arial"
   });
 
-  titleSlide.addText(presentation.date || "", {
-    x: 1, y: 6.0, w: 8, h: 0.5,
-    fontSize: 12, color: "666666", align: "center", fontFace: "Arial"
-  });
-
   // 2. Content Slides
   for (const slideData of presentation.slides) {
     const slide = pres.addSlide();
@@ -43,7 +38,7 @@ export const exportToPptx = async (presentation: Presentation) => {
       slide.background = { data: slideData.imageUrl };
       slide.addShape(pres.ShapeType.rect, {
         x: 0, y: 0, w: '100%', h: '100%',
-        fill: { color: "000000", transparency: 50 }
+        fill: { color: "000000", transparency: 60 }
       });
     } else {
       slide.background = { color: "0F172A" };
@@ -57,33 +52,48 @@ export const exportToPptx = async (presentation: Presentation) => {
       });
     }
 
-    const isHero = slideData.layout === 'hero';
-
+    // Title
     slide.addText(slideData.title, {
-      x: isHero ? 0.5 : 0.8, 
-      y: isHero ? 1.5 : 0.6, 
-      w: 8.4, 
-      h: 1,
-      fontSize: isHero ? 44 : 32, 
-      color: "FFFFFF", 
-      bold: true,
-      align: isHero ? "center" : "left",
-      fontFace: "Arial"
+      x: 0.5, y: 0.5, w: 9, h: 1,
+      fontSize: 32, color: "FFFFFF", bold: true, align: "left", fontFace: "Arial"
     });
 
-    const bulletText = slideData.content.map(line => ({
-      text: line,
-      options: { bullet: true, fontSize: isHero ? 22 : 18, color: "E2E8F0", fontFace: "Arial" }
-    }));
+    // Content Handling based on componentType
+    if (slideData.componentType === 'chart' && slideData.chartData) {
+      const labels = slideData.chartData.map(d => d.label);
+      const values = slideData.chartData.map(d => d.value);
+      slide.addChart(pres.ChartType.bar, [
+        { name: "Value", labels, values }
+      ], {
+        x: 0.5, y: 1.5, w: 9, h: 4,
+        showLegend: false,
+        chartColors: [primaryColor],
+        valAxisTitleColor: "FFFFFF",
+        catAxisLabelColor: "FFFFFF"
+      });
+    } else if (slideData.componentType === 'table' && slideData.tableData) {
+      const tableRows = [
+        slideData.tableData.headers.map(h => ({ text: h, options: { bold: true, fill: primaryColor, color: "FFFFFF" } })),
+        ...slideData.tableData.rows
+      ];
+      slide.addTable(tableRows as any, {
+        x: 0.5, y: 1.5, w: 9,
+        border: { pt: 1, color: "334155" },
+        color: "FFFFFF",
+        fontSize: 12
+      });
+    } else {
+      // Default bullet list
+      const bulletText = slideData.content.map(line => ({
+        text: line,
+        options: { bullet: true, fontSize: 18, color: "E2E8F0", fontFace: "Arial", margin: 10 }
+      }));
 
-    slide.addText(bulletText, {
-      x: isHero ? 0.5 : 0.8, 
-      y: isHero ? 2.5 : 1.6, 
-      w: 8.4, 
-      h: 3.5,
-      valign: "top",
-      align: isHero ? "center" : "left"
-    });
+      slide.addText(bulletText, {
+        x: 0.5, y: 1.5, w: 9, h: 4,
+        valign: "top"
+      });
+    }
   }
 
   await pres.writeFile({ fileName: `${presentation.title.replace(/\s+/g, '_')}.pptx` });

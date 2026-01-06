@@ -80,8 +80,8 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
       ${branding ? `Apply brand persona for ${branding.name} (${branding.slogan}).` : ""}
       ${filePart ? "Analyze document for specific data points and insights." : ""}
       
-      Generate a professional 6-slide presentation. 
-      Vary the componentType for each slide to keep it engaging.
+      Generate a comprehensive professional 10-slide presentation. 
+      Vary the componentType for each slide to keep it engaging and highly visual.
       Use: 'grid', 'steps', 'stat', 'chart', 'table', 'timeline', 'icons', 'comparison'.
       
       For 'chart', provide 'chartData' (label, value).
