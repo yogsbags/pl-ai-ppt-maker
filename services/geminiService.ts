@@ -2,7 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Slide, Presentation, PresentationMode, ComponentType } from "../types";
 
-// Helper to get a fresh AI client instance right before use to ensure latest API key is used.
 const getAIClient = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
@@ -10,28 +9,49 @@ const getAIClient = () => {
 export const generatePresentationOutline = async (topic: string, mode: PresentationMode): Promise<Presentation> => {
   const ai = getAIClient();
   
-  let systemPrompt = "";
+  let modeInstruction = "";
   if (mode === 'INTELLIGENT') {
-    systemPrompt = `Create a visually stunning structural layout for a presentation about "${topic}". 
-    For each slide, choose a 'componentType' from: grid, list, steps, stat, comparison.
-    Focus on structure and information hierarchy. Do NOT use image prompts.`;
+    modeInstruction = `
+      MODE: Intelligent Text Layout (NO IMAGES).
+      Focus: High-end structural design like Microsoft PowerPoint Designer or Canva.
+      For each slide, select a 'componentType' that best represents the data:
+      - 'grid': For 3-4 distinct features or points.
+      - 'steps': For processes or chronological info.
+      - 'stat': For data-heavy or single-focus impact points.
+      - 'comparison': For 'Before vs After' or 'Pros vs Cons'.
+      - 'list': Standard professional bullet points.
+    `;
   } else if (mode === 'INFOGRAPHIC') {
-    systemPrompt = `Create an out-of-this-world infographic presentation outline about "${topic}".
-    Choose a common artistic theme (e.g. 'Cyberpunk Industrial', 'Organic Minimalist', 'Futuristic Glass').
-    Each slide needs a high-detail 'imagePrompt' for Nano Banana Pro to generate a COMPLETE infographic slide including text integration.`;
+    modeInstruction = `
+      MODE: Infographic Based.
+      Focus: A single, cohesive, out-of-this-world visual experience where TEXT IS PART OF THE IMAGE.
+      Choose a common artistic theme (e.g., 'Modern Glassmorphism', 'Cyberpunk Blueprints', 'Minimalist Bauhaus').
+      Each 'imagePrompt' must describe a full infographic slide where the title and content are integrated into the design.
+    `;
   } else {
-    systemPrompt = `Create a hybrid presentation outline about "${topic}". Text over cinematic images.`;
+    modeInstruction = `
+      MODE: Hybrid (Text + Image).
+      Focus: Cinematic backdrop images with clean text overlays.
+    `;
   }
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: `${systemPrompt} 
+      contents: `Topic: "${topic}"
+      ${modeInstruction}
+      
+      Generate a professional 6-slide presentation outline.
       Return a JSON object with:
-      - title: Main title
-      - subtitle: Catchy subtitle
-      - theme: (string, if infographic)
-      - slides: Array of 6 slides with 'title', 'content' (array), 'layout', and (if applicable) 'imagePrompt' or 'componentType'.`,
+      - title: A punchy main title.
+      - subtitle: A descriptive subtitle.
+      - theme: (string) A stylistic theme description for the whole deck.
+      - slides: Array of 6 objects with:
+        - title: Slide heading.
+        - content: Array of 3-5 key strings.
+        - layout: 'hero', 'split', 'focus', or 'minimal'.
+        - componentType: 'grid', 'steps', 'stat', 'comparison', or 'list' (Required for INTELLIGENT mode).
+        - imagePrompt: Detailed description for Nano Banana Pro (Required for INFOGRAPHIC and HYBRID).`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -49,7 +69,7 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
                   content: { type: Type.ARRAY, items: { type: Type.STRING } },
                   imagePrompt: { type: Type.STRING },
                   layout: { type: Type.STRING, enum: ['hero', 'split', 'focus', 'minimal'] },
-                  componentType: { type: Type.STRING, enum: ['grid', 'list', 'steps', 'stat', 'comparison'] }
+                  componentType: { type: Type.STRING, enum: ['grid', 'steps', 'stat', 'comparison', 'list'] }
                 },
                 required: ["title", "content", "layout"]
               }
@@ -71,29 +91,26 @@ export const generatePresentationOutline = async (topic: string, mode: Presentat
       }))
     };
   } catch (error: any) {
-    // Catch and throw a specific error if the API key needs reset
     if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
     throw error;
   }
 };
 
 export const generateSlideImage = async (prompt: string, theme?: string): Promise<string> => {
-  // Always create a fresh instance for image generation tasks to ensure latest key is used.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const finalPrompt = theme ? `${prompt}. Theme: ${theme}. Full-page infographic, high-end typography, integrated text elements, clear readable design, 8k, professional poster aesthetic.` : prompt;
+  // For Infographic mode, we specify that the image IS the slide.
+  const finalPrompt = theme 
+    ? `An out-of-this-world professional infographic slide about: ${prompt}. Style: ${theme}. 
+       Include integrated text placeholders, clean vector aesthetics, high-end design, 8k resolution, flat modern colors.` 
+    : prompt;
   
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: finalPrompt }],
-      },
-      config: {
-        imageConfig: { aspectRatio: "16:9", imageSize: "1K" }
-      },
+      contents: { parts: [{ text: finalPrompt }] },
+      config: { imageConfig: { aspectRatio: "16:9", imageSize: "1K" } },
     });
 
-    // Iterate through all candidates and parts to find the image data as per guidelines.
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
@@ -106,10 +123,14 @@ export const generateSlideImage = async (prompt: string, theme?: string): Promis
 
 export const editSlideWithAI = async (slide: Slide, userRequest: string): Promise<Partial<Slide>> => {
   const ai = getAIClient();
+  // Added try-catch to detect and propagate API_KEY_RESET_REQUIRED errors.
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Edit slide: ${JSON.stringify(slide)}. Request: "${userRequest}". Return JSON with updated title, content, layout, componentType, imagePrompt.`,
+      contents: `Current Slide JSON: ${JSON.stringify(slide)}. 
+      User Edit Request: "${userRequest}". 
+      Update the slide contents and structure to satisfy the request. 
+      Return a JSON object with updated title, content (array), layout, and componentType.`,
       config: { 
         responseMimeType: "application/json",
         responseSchema: {
@@ -118,8 +139,7 @@ export const editSlideWithAI = async (slide: Slide, userRequest: string): Promis
             title: { type: Type.STRING },
             content: { type: Type.ARRAY, items: { type: Type.STRING } },
             layout: { type: Type.STRING, enum: ['hero', 'split', 'focus', 'minimal'] },
-            componentType: { type: Type.STRING, enum: ['grid', 'list', 'steps', 'stat', 'comparison'] },
-            imagePrompt: { type: Type.STRING }
+            componentType: { type: Type.STRING, enum: ['grid', 'steps', 'stat', 'comparison', 'list'] }
           }
         }
       }
