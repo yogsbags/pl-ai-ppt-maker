@@ -1,0 +1,5 @@
+{
+  "name": "LuminaSlides AI",
+  "description": "A high-end AI presentation generator that creates professional PowerPoint decks using Gemini 3 Pro for content and Nano Banana Pro for cinematic visuals. Featuring real-time editing and instant PPTX export.",
+  "requestFramePermissions": []
+}
