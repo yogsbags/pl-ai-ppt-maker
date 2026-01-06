@@ -18,24 +18,24 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
   const isInfographic = mode === 'INFOGRAPHIC';
 
   const renderComponent = () => {
-    const componentClass = isInfographic ? "opacity-0" : "flex-1 w-full";
+    const componentClass = isInfographic ? "opacity-0" : "flex-1 w-full overflow-hidden";
 
     switch (slide.componentType) {
       case 'chart':
         if (!slide.chartData) return null;
         const maxVal = Math.max(...slide.chartData.map(d => d.value), 1);
         return (
-          <div className={`${componentClass} flex items-end justify-around h-64 mt-10 gap-4`}>
+          <div className={`${componentClass} flex items-end justify-around h-32 sm:h-64 mt-6 md:mt-10 gap-2 md:gap-4`}>
             {slide.chartData.map((d, i) => (
               <div key={i} className="flex flex-col items-center flex-1 group">
                 <div className="relative w-full flex flex-col items-center">
                   <div 
                     style={{ height: `${(d.value / maxVal) * 100}%`, backgroundColor: primaryColor }}
-                    className="w-full rounded-t-xl transition-all duration-700 opacity-80 group-hover:opacity-100 shadow-lg shadow-black/40"
+                    className="w-full rounded-t-lg md:rounded-t-xl transition-all duration-700 opacity-80 group-hover:opacity-100 shadow-lg shadow-black/40"
                   ></div>
-                  <span className="absolute -top-10 text-xl font-black text-white">{d.value}</span>
+                  <span className="absolute -top-6 md:-top-10 text-xs md:text-xl font-black text-white">{d.value}</span>
                 </div>
-                <span className="mt-4 text-xs font-bold uppercase tracking-widest text-slate-400 text-center truncate w-full">{d.label}</span>
+                <span className="mt-2 md:mt-4 text-[8px] md:text-xs font-bold uppercase tracking-widest text-slate-400 text-center truncate w-full px-1">{d.label}</span>
               </div>
             ))}
           </div>
@@ -44,12 +44,12 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
       case 'table':
         if (!slide.tableData) return null;
         return (
-          <div className={`${componentClass} mt-8 overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.02] backdrop-blur-xl`}>
-            <table className="w-full text-left border-collapse">
+          <div className={`${componentClass} mt-4 md:mt-8 overflow-x-auto rounded-xl md:rounded-[32px] border border-white/10 bg-white/[0.02] backdrop-blur-xl`}>
+            <table className="w-full text-left border-collapse min-w-[400px] sm:min-w-0">
               <thead>
                 <tr style={{ backgroundColor: primaryColor + '20' }}>
                   {slide.tableData.headers.map((h, i) => (
-                    <th key={i} className="px-6 py-5 text-xs font-black uppercase tracking-widest text-slate-300 border-b border-white/10">{h}</th>
+                    <th key={i} className="px-4 md:px-6 py-3 md:py-5 text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-300 border-b border-white/10">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -57,25 +57,26 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
                 {slide.tableData.rows.map((row, i) => (
                   <tr key={i} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
                     {row.map((cell, j) => (
-                      <td key={j} className="px-6 py-4 text-sm font-medium text-slate-200">{cell}</td>
+                      <td key={j} className="px-4 md:px-6 py-3 md:py-4 text-[10px] md:text-sm font-medium text-slate-200">{cell}</td>
                     ))}
                   </tr>
-                </tbody>
+                ))}
+              </tbody>
             </table>
           </div>
         );
 
       case 'timeline':
         return (
-          <div className={`${componentClass} mt-12 relative flex flex-col space-y-8`}>
-            <div style={{ backgroundColor: primaryColor }} className="absolute left-[27px] top-0 bottom-0 w-0.5 opacity-20"></div>
+          <div className={`${componentClass} mt-6 md:mt-12 relative flex flex-col space-y-4 md:space-y-8`}>
+            <div style={{ backgroundColor: primaryColor }} className="absolute left-[19px] md:left-[27px] top-0 bottom-0 w-0.5 opacity-20"></div>
             {slide.content.map((point, idx) => (
-              <div key={idx} className="flex items-start space-x-6 relative">
-                <div style={{ borderColor: primaryColor }} className="z-10 w-14 h-14 rounded-full bg-slate-900 border-2 flex items-center justify-center flex-shrink-0 shadow-xl">
-                  <span style={{ color: primaryColor }} className="font-black">0{idx + 1}</span>
+              <div key={idx} className="flex items-start space-x-3 md:space-x-6 relative">
+                <div style={{ borderColor: primaryColor }} className="z-10 w-10 h-10 md:w-14 md:h-14 rounded-full bg-slate-900 border-2 flex items-center justify-center flex-shrink-0 shadow-xl">
+                  <span style={{ color: primaryColor }} className="text-xs md:text-base font-black">0{idx + 1}</span>
                 </div>
-                <div className="flex-1 pt-3">
-                  <p className="text-xl text-slate-100 font-bold leading-tight">{point}</p>
+                <div className="flex-1 pt-1 md:pt-3">
+                  <p className="text-sm md:text-xl text-slate-100 font-bold leading-tight">{point}</p>
                 </div>
               </div>
             ))}
@@ -84,12 +85,12 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
 
       case 'comparison':
         return (
-          <div className={`${isInfographic ? 'opacity-0' : 'grid grid-cols-2 gap-8 mt-10 w-full'}`}>
+          <div className={`${isInfographic ? 'opacity-0' : 'grid grid-cols-2 gap-4 md:gap-8 mt-6 md:mt-10 w-full'}`}>
             {slide.content.slice(0, 2).map((point, idx) => (
-              <div key={idx} className="p-8 rounded-[40px] bg-white/[0.03] border border-white/10 flex flex-col justify-center text-center relative overflow-hidden group">
+              <div key={idx} className="p-4 md:p-8 rounded-2xl md:rounded-[40px] bg-white/[0.03] border border-white/10 flex flex-col justify-center text-center relative overflow-hidden group">
                 <div style={{ backgroundColor: primaryColor }} className="absolute top-0 left-0 right-0 h-1 opacity-40"></div>
-                <i className={`fa-solid ${idx === 0 ? 'fa-circle-check text-emerald-400' : 'fa-circle-right text-indigo-400'} text-3xl mb-6 opacity-50`}></i>
-                <p className="text-2xl font-black text-white leading-tight">{point}</p>
+                <i className={`fa-solid ${idx === 0 ? 'fa-circle-check text-emerald-400' : 'fa-circle-right text-indigo-400'} text-lg md:text-3xl mb-3 md:mb-6 opacity-50`}></i>
+                <p className="text-xs md:text-2xl font-black text-white leading-tight">{point}</p>
               </div>
             ))}
           </div>
@@ -97,17 +98,15 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
 
       case 'icons':
         return (
-          <div className={`${isInfographic ? 'opacity-0' : 'grid grid-cols-3 gap-6 mt-12 w-full'}`}>
+          <div className={`${isInfographic ? 'opacity-0' : 'grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-6 mt-6 md:mt-12 w-full'}`}>
             {slide.content.map((point, idx) => {
-              // Priority: Array of icons, Single icon, Fallback bolt
               const iconClass = (slide.icons && slide.icons[idx]) || slide.icon || 'fas fa-bolt-lightning';
               return (
-                <div key={idx} className="p-6 rounded-[32px] bg-white/[0.03] border border-white/10 flex flex-col items-center text-center hover:bg-white/[0.05] transition-all group">
-                  <div style={{ color: primaryColor }} className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6 text-3xl group-hover:scale-110 transition-transform">
-                    {/* Render the full class string. If AI only provided the icon name, we wrap it. */}
+                <div key={idx} className="p-4 md:p-6 rounded-2xl md:rounded-[32px] bg-white/[0.03] border border-white/10 flex flex-col items-center text-center hover:bg-white/[0.05] transition-all group">
+                  <div style={{ color: primaryColor }} className="w-10 h-10 md:w-16 md:h-16 bg-white/5 rounded-xl md:rounded-2xl flex items-center justify-center mb-3 md:mb-6 text-xl md:text-3xl group-hover:scale-110 transition-transform">
                     <i className={iconClass.includes('fa-') ? iconClass : `fas fa-${iconClass}`}></i>
                   </div>
-                  <p className="text-sm font-bold text-slate-300 leading-snug">{point}</p>
+                  <p className="text-[10px] md:text-sm font-bold text-slate-300 leading-snug">{point}</p>
                 </div>
               );
             })}
@@ -116,11 +115,11 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
 
       case 'grid':
         return (
-          <div className={`${isInfographic ? 'opacity-0' : 'grid grid-cols-2 gap-6 mt-10 w-full'}`}>
+          <div className={`${isInfographic ? 'opacity-0' : 'grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-6 mt-6 md:mt-10 w-full'}`}>
             {slide.content.map((point, idx) => (
-              <div key={idx} className="p-6 bg-white/[0.03] border border-white/10 rounded-3xl flex flex-col justify-center">
-                <div style={{ color: primaryColor }} className="font-black text-[10px] uppercase tracking-tighter mb-2 opacity-70">Feature 0{idx + 1}</div>
-                <p className="text-lg text-slate-200 font-medium leading-tight">{point}</p>
+              <div key={idx} className="p-4 bg-white/[0.03] border border-white/10 rounded-2xl md:rounded-3xl flex flex-col justify-center">
+                <div style={{ color: primaryColor }} className="font-black text-[8px] md:text-[10px] uppercase tracking-tighter mb-1 md:mb-2 opacity-70">Feature 0{idx + 1}</div>
+                <p className="text-xs md:text-lg text-slate-200 font-medium leading-tight">{point}</p>
               </div>
             ))}
           </div>
@@ -128,11 +127,11 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
 
       case 'stat':
         return (
-          <div className={`${isInfographic ? 'opacity-0' : 'flex flex-col items-center justify-center mt-10 text-center flex-1'}`}>
-            <div style={{ color: primaryColor }} className="text-9xl font-black mb-4 leading-none tracking-tighter">
+          <div className={`${isInfographic ? 'opacity-0' : 'flex flex-col items-center justify-center mt-6 md:mt-10 text-center flex-1'}`}>
+            <div style={{ color: primaryColor }} className="text-6xl md:text-9xl font-black mb-2 md:mb-4 leading-none tracking-tighter">
               {slide.content[0]?.match(/\d+%?/) ? slide.content[0].match(/\d+%?/)![0] : '85%'}
             </div>
-            <p className="text-3xl text-slate-300 font-bold max-w-2xl leading-tight">
+            <p className="text-xl md:text-3xl text-slate-300 font-bold max-w-2xl leading-tight px-4">
               {slide.content[0]?.replace(/\d+%?/, '').trim() || slide.content[0]}
             </p>
           </div>
@@ -140,10 +139,10 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
 
       default:
         return (
-          <ul className={`${isInfographic ? 'opacity-0' : 'space-y-6 mt-10 flex-1 flex flex-col justify-center'}`}>
+          <ul className={`${isInfographic ? 'opacity-0' : 'space-y-3 md:space-y-6 mt-6 md:mt-10 flex-1 flex flex-col justify-center px-4'}`}>
             {slide.content.map((point, idx) => (
-              <li key={idx} className="flex items-start text-2xl text-slate-200 group">
-                <span style={{ color: primaryColor }} className="mr-6 font-black opacity-30 group-hover:opacity-100 transition-opacity">/0{idx + 1}</span>
+              <li key={idx} className="flex items-start text-sm md:text-2xl text-slate-200 group">
+                <span style={{ color: primaryColor }} className="mr-3 md:mr-6 font-black opacity-30 group-hover:opacity-100 transition-opacity">/0{idx + 1}</span>
                 <span className="flex-1 font-semibold leading-relaxed">{point}</span>
               </li>
             ))}
@@ -153,9 +152,9 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
   };
 
   if (isFirst) {
-    const titleOverlayClass = isInfographic && slide.imageUrl ? "opacity-0" : "relative z-10 flex flex-col items-center justify-center text-center p-24 h-full";
+    const titleOverlayClass = isInfographic && slide.imageUrl ? "opacity-0" : "relative z-10 flex flex-col items-center justify-center text-center p-8 md:p-24 h-full";
     return (
-      <div className="relative w-full aspect-video rounded-[48px] overflow-hidden shadow-2xl bg-slate-950 border border-white/5">
+      <div className="relative w-full aspect-video rounded-[24px] md:rounded-[48px] overflow-hidden shadow-2xl bg-slate-950 border border-white/5">
         {(slide.imageUrl || slide.isGeneratingImage) && (
            <div className="absolute inset-0 z-0">
              {slide.imageUrl && <img src={slide.imageUrl} className="w-full h-full object-cover animate-in fade-in duration-700" alt="" />}
@@ -164,29 +163,29 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
         )}
 
         <div className={titleOverlayClass}>
-          <div className="absolute top-16 flex flex-col items-center space-y-6">
-             {branding?.logoUrl && <img src={branding.logoUrl} className="h-14 w-auto object-contain opacity-90" alt="" />}
-             <div className="h-[2px] w-32 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+          <div className="absolute top-8 md:top-16 flex flex-col items-center space-y-3 md:space-y-6">
+             {branding?.logoUrl && <img src={branding.logoUrl} className="h-8 md:h-14 w-auto object-contain opacity-90" alt="" />}
+             <div className="h-[1px] md:h-[2px] w-16 md:w-32 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
           </div>
           
-          <h1 className="text-8xl font-black tracking-tighter text-white mb-8 leading-none">
+          <h1 className="text-3xl md:text-8xl font-black tracking-tighter text-white mb-4 md:mb-8 leading-none px-4">
             {slide.title}
           </h1>
-          <p className="text-2xl text-slate-400 font-medium max-w-3xl mb-16 leading-relaxed">
+          <p className="text-xs md:text-2xl text-slate-400 font-medium max-w-3xl mb-8 md:mb-16 leading-relaxed px-6 line-clamp-2 md:line-clamp-none">
             {slide.content[0]}
           </p>
           
-          <div className="flex flex-col items-center space-y-3">
-            <p style={{ color: primaryColor }} className="text-sm font-black uppercase tracking-[0.3em]">
+          <div className="flex flex-col items-center space-y-1 md:space-y-3">
+            <p style={{ color: primaryColor }} className="text-[8px] md:text-sm font-black uppercase tracking-[0.2em] md:tracking-[0.3em]">
               {oneLiner || branding?.slogan || 'Global Strategy'}
             </p>
-            <p className="text-slate-600 font-bold text-xs uppercase tracking-widest">{date}</p>
+            <p className="text-slate-600 font-bold text-[8px] md:text-xs uppercase tracking-widest">{date}</p>
           </div>
         </div>
 
         {slide.isGeneratingImage && (
           <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center">
-            <div style={{ borderTopColor: primaryColor }} className="w-16 h-16 border-4 border-white/5 rounded-full animate-spin"></div>
+            <div style={{ borderTopColor: primaryColor }} className="w-10 h-10 md:w-16 md:h-16 border-4 border-white/5 rounded-full animate-spin"></div>
           </div>
         )}
       </div>
@@ -195,10 +194,10 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
 
   const isSplit = slide.layout === 'split' && !isInfographic;
   const isFocus = slide.layout === 'focus' && !isInfographic;
-  const overlayClass = isInfographic ? "opacity-0 pointer-events-none" : "relative z-10 h-full p-20 flex";
+  const overlayClass = isInfographic ? "opacity-0 pointer-events-none" : "relative z-10 h-full p-6 md:p-20 flex overflow-hidden";
 
   return (
-    <div className={`relative w-full aspect-video rounded-[48px] overflow-hidden shadow-2xl border border-white/5 flex flex-col bg-slate-950 transition-all duration-500`}>
+    <div className={`relative w-full aspect-video rounded-[24px] md:rounded-[48px] overflow-hidden shadow-2xl border border-white/5 flex flex-col bg-slate-950 transition-all duration-500`}>
       {(slide.imageUrl || slide.isGeneratingImage) && (
         <div className="absolute inset-0 z-0">
           {slide.imageUrl && <img src={slide.imageUrl} className="w-full h-full object-cover animate-in fade-in duration-700" alt="" />}
@@ -208,28 +207,28 @@ export const SlidePreview: React.FC<SlidePreviewProps> = memo(({ slide, mode, br
 
       {slide.isGeneratingImage && (
         <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center">
-          <div style={{ borderTopColor: primaryColor }} className="w-16 h-16 border-4 border-white/5 rounded-full animate-spin"></div>
+          <div style={{ borderTopColor: primaryColor }} className="w-10 h-10 md:w-16 md:h-16 border-4 border-white/5 rounded-full animate-spin"></div>
         </div>
       )}
 
-      <div className={`${overlayClass} ${isSplit ? 'flex-row gap-16' : 'flex-col'} ${isFocus ? 'items-center justify-center text-center' : ''}`}>
-        <div className={isSplit ? 'w-2/5 flex flex-col justify-center' : ''}>
-          <h2 className={`font-black tracking-tighter text-white ${isFocus ? 'text-7xl mb-8 max-w-4xl' : isSplit ? 'text-5xl mb-6' : 'text-6xl mb-4'}`}>
+      <div className={`${overlayClass} ${isSplit ? 'flex-col sm:flex-row gap-4 md:gap-16' : 'flex-col'} ${isFocus ? 'items-center justify-center text-center' : ''}`}>
+        <div className={isSplit ? 'sm:w-2/5 flex flex-col justify-center' : ''}>
+          <h2 className={`font-black tracking-tighter text-white ${isFocus ? 'text-3xl md:text-7xl mb-4 md:mb-8 max-w-4xl' : isSplit ? 'text-2xl md:text-5xl mb-2 md:mb-6' : 'text-3xl md:text-6xl mb-2 md:mb-4'}`}>
             {slide.title}
           </h2>
           {isSplit && slide.content.length > 0 && (
-             <p className="text-slate-400 text-lg font-medium leading-relaxed opacity-80">{slide.content[0]}</p>
+             <p className="text-slate-400 text-[10px] md:text-lg font-medium leading-relaxed opacity-80 line-clamp-2">{slide.content[0]}</p>
           )}
         </div>
 
-        <div className={isSplit ? 'w-3/5' : 'flex-1'}>
+        <div className={isSplit ? 'sm:w-3/5' : 'flex-1'}>
           {renderComponent()}
         </div>
       </div>
 
       {branding?.logoUrl && !isFirst && !isInfographic && (
-        <div className="absolute bottom-10 right-14 z-20">
-          <img src={branding.logoUrl} className="h-10 w-auto object-contain grayscale opacity-20" alt="" />
+        <div className="absolute bottom-4 right-6 md:bottom-10 md:right-14 z-20">
+          <img src={branding.logoUrl} className="h-6 md:h-10 w-auto object-contain grayscale opacity-20" alt="" />
         </div>
       )}
     </div>

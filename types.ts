@@ -1,4 +1,6 @@
 
+
+
 export type SlideLayout = 'hero' | 'split' | 'focus' | 'minimal' | 'bento';
 export type PresentationMode = 'INTELLIGENT' | 'INFOGRAPHIC' | 'HYBRID';
 export type ComponentType = 'grid' | 'list' | 'steps' | 'stat' | 'comparison' | 'chart' | 'table' | 'timeline' | 'icons';
@@ -81,7 +83,7 @@ declare global {
     /**
      * The aistudio object is injected into the global scope.
      */
-    // Remove readonly modifier to ensure identity with environment-level declarations.
-    aistudio: AIStudio;
+    // Restored readonly modifier to match ambient declarations in the environment and resolve the "identical modifiers" error.
+    readonly aistudio: AIStudio;
   }
 }

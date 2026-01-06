@@ -9,48 +9,54 @@ const getAIClient = () => {
 export const extractBrandInfo = async (url: string): Promise<Branding> => {
   const ai = getAIClient();
   
-  const searchResponse = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Perform a detailed search to find the official brand identity for the website: ${url}. 
-    I need: 
-    1. The official brand name.
-    2. Primary and secondary HEX brand colors.
-    3. The official slogan or mission statement.
-    4. A direct URL to their logo.`,
-    config: {
-      tools: [{ googleSearch: {} }]
-    }
-  });
-
-  const groundingSources = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-
-  const structResponse = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Based on this information: "${searchResponse.text}", 
-    extract the brand details into a valid JSON object.
-    Required keys: name, primaryColor, secondaryColor, slogan, logoUrl.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          primaryColor: { type: Type.STRING },
-          secondaryColor: { type: Type.STRING },
-          slogan: { type: Type.STRING },
-          logoUrl: { type: Type.STRING }
-        },
-        required: ["name", "primaryColor", "secondaryColor"]
+  // Fix: Added try-catch block and explicit check for API key reset requirement
+  try {
+    const searchResponse = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Perform a detailed search to find the official brand identity for the website: ${url}. 
+      I need: 
+      1. The official brand name.
+      2. Primary and secondary HEX brand colors.
+      3. The official slogan or mission statement.
+      4. A direct URL to their logo.`,
+      config: {
+        tools: [{ googleSearch: {} }]
       }
-    }
-  });
+    });
 
-  const brandingData = JSON.parse(structResponse.text || "{}");
-  
-  return {
-    ...brandingData,
-    sources: groundingSources
-  };
+    const groundingSources = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
+    const structResponse = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Based on this information: "${searchResponse.text}", 
+      extract the brand details into a valid JSON object.
+      Required keys: name, primaryColor, secondaryColor, slogan, logoUrl.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            primaryColor: { type: Type.STRING },
+            secondaryColor: { type: Type.STRING },
+            slogan: { type: Type.STRING },
+            logoUrl: { type: Type.STRING }
+          },
+          required: ["name", "primaryColor", "secondaryColor"]
+        }
+      }
+    });
+
+    const brandingData = JSON.parse(structResponse.text || "{}");
+    
+    return {
+      ...brandingData,
+      sources: groundingSources
+    };
+  } catch (error: any) {
+    if (error?.message?.includes("Requested entity was not found")) throw new Error("API_KEY_RESET_REQUIRED");
+    throw error;
+  }
 };
 
 export const analyzeFileTopic = async (filePart: FilePart): Promise<string> => {
